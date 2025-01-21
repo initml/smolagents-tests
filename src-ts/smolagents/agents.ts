@@ -16,7 +16,7 @@
 
 import { Tool } from './tools';
 import { FinalAnswerTool, TOOL_MAPPING } from './default_tools';
-import { MessageRole } from './models';
+import { MessageRole, ChatMessage } from './models';
 import { 
     CODE_SYSTEM_PROMPT,
     MANAGED_AGENT_PROMPT,
@@ -31,7 +31,6 @@ import {
     DEFAULT_TOOL_DESCRIPTION_TEMPLATE,
     getToolDescriptionWithArgs
 } from './tools';
-import { AgentAudio, AgentImage } from './types';
 import {
     AgentError,
     AgentExecutionError,
@@ -47,13 +46,24 @@ import { FactsManager } from './facts';
 export interface ToolCall {
     name: string;
     arguments: any;
-    id: string;
+    id?: string;
 }
 
-export abstract class AgentStepLog {}
+export interface AgentStepLog {
+    agentMemory?: ChatMessage[];
+    toolCalls?: ToolCall[];
+    startTime?: number;
+    endTime?: number;
+    step?: number;
+    error?: AgentError;
+    duration?: number;
+    llmOutput?: string;
+    observations?: string;
+    actionOutput?: any;
+}
 
-export class ActionStep extends AgentStepLog {
-    agentMemory?: Array<Record<string, string>>;
+export class ActionStep implements AgentStepLog {
+    agentMemory?: ChatMessage[];
     toolCalls?: ToolCall[];
     startTime?: number;
     endTime?: number;
@@ -65,27 +75,20 @@ export class ActionStep extends AgentStepLog {
     actionOutput?: any;
 
     constructor(init?: Partial<ActionStep>) {
-        super();
         Object.assign(this, init);
     }
 }
 
-export class PlanningStep extends AgentStepLog {
-    constructor(public plan: string, public facts: string) {
-        super();
-    }
+export class PlanningStep {
+    constructor(public plan: string, public facts: string) {}
 }
 
-export class TaskStep extends AgentStepLog {
-    constructor(public task: string) {
-        super();
-    }
+export class TaskStep {
+    constructor(public task: string) {}
 }
 
-export class SystemPromptStep extends AgentStepLog {
-    constructor(public systemPrompt: string) {
-        super();
-    }
+export class SystemPromptStep {
+    constructor(public systemPrompt: string) {}
 }
 
 export enum LogLevel {
@@ -104,73 +107,9 @@ export class AgentLogger {
     }
 }
 
-export function getToolDescriptions(
-    tools: Record<string, Tool>,
-    toolDescriptionTemplate: string
-): string {
-    return Object.values(tools)
-        .map(tool => getToolDescriptionWithArgs(tool, toolDescriptionTemplate))
-        .join('\n');
-}
-
-export function formatPromptWithTools(
-    tools: Record<string, Tool>,
-    promptTemplate: string,
-    toolDescriptionTemplate: string
-): string {
-    let prompt = promptTemplate.replace(
-        '{{tool_descriptions}}',
-        getToolDescriptions(tools, toolDescriptionTemplate)
-    );
-    
-    if (prompt.includes('{{tool_names}}')) {
-        prompt = prompt.replace(
-            '{{tool_names}}',
-            Object.values(tools).map(tool => `'${tool.name}'`).join(', ')
-        );
-    }
-    
-    return prompt;
-}
-
-export function showAgentsDescriptions(managedAgents: Record<string, ManagedAgent>): string {
-    let descriptions = `
-You can also give requests to team members.
-Calling a team member works the same as for calling a tool: simply, the only argument you can give in the call is 'request', a long string explaining your request.
-Given that this team member is a real human, you should be very verbose in your request.
-Here is a list of the team members that you can call:`;
-
-    for (const agent of Object.values(managedAgents)) {
-        descriptions += `\n- ${agent.name}: ${agent.description}`;
-    }
-    
-    return descriptions;
-}
-
-export function formatPromptWithManagedAgentsDescriptions(
-    promptTemplate: string,
-    managedAgents: Record<string, ManagedAgent>,
-    agentDescriptionsPlaceholder: string = '{{managed_agents_descriptions}}'
-): string {
-    if (!promptTemplate.includes(agentDescriptionsPlaceholder)) {
-        throw new Error(
-            `Provided prompt template does not contain the managed agents descriptions placeholder '${agentDescriptionsPlaceholder}'`
-        );
-    }
-
-    if (Object.keys(managedAgents).length > 0) {
-        return promptTemplate.replace(
-            agentDescriptionsPlaceholder,
-            showAgentsDescriptions(managedAgents)
-        );
-    } else {
-        return promptTemplate.replace(agentDescriptionsPlaceholder, '');
-    }
-}
-
 export abstract class MultiStepAgent {
     protected tools: Record<string, Tool>;
-    protected model: (messages: Array<Record<string, string>>) => Promise<string>;
+    protected model: (messages: ChatMessage[]) => Promise<string>;
     protected systemPrompt: string;
     protected toolDescriptionTemplate: string;
     protected maxSteps: number;
@@ -179,14 +118,14 @@ export abstract class MultiStepAgent {
     protected grammar?: Record<string, string>;
     protected managedAgents: Record<string, ManagedAgent>;
     protected planningInterval?: number;
-    protected monitor?: any;  // TODO: implement Monitor class
+    protected monitor?: any;
     protected lastPlan?: string;
     protected lastFacts?: string;
     protected factsManager: FactsManager;
 
     constructor(
         tools: Tool[],
-        model: (messages: Array<Record<string, string>>) => Promise<string>,
+        model: (messages: ChatMessage[]) => Promise<string>,
         systemPrompt?: string,
         toolDescriptionTemplate?: string,
         maxSteps: number = 6,
@@ -196,11 +135,11 @@ export abstract class MultiStepAgent {
         grammar?: Record<string, string>,
         planningInterval?: number,
         monitor?: any,
-        factsManager: FactsManager
+        factsManager?: FactsManager
     ) {
         this.tools = Object.fromEntries(tools.map(tool => [tool.name, tool]));
         if (addBaseTools) {
-            this.tools = { ...this.tools, ...TOOL_MAPPING };
+            Object.assign(this.tools, TOOL_MAPPING);
         }
         this.model = model;
         this.systemPrompt = systemPrompt || TOOL_CALLING_SYSTEM_PROMPT;
@@ -212,7 +151,7 @@ export abstract class MultiStepAgent {
         this.managedAgents = {};
         this.planningInterval = planningInterval;
         this.monitor = monitor;
-        this.factsManager = factsManager;
+        this.factsManager = factsManager || new FactsManager();
     }
 
     protected async step(logEntry: ActionStep): Promise<any | null> {
@@ -220,7 +159,7 @@ export abstract class MultiStepAgent {
     }
 
     public async run(task: string): Promise<any> {
-        const memory: Array<Record<string, string>> = [
+        const memory: ChatMessage[] = [
             { role: MessageRole.SYSTEM, content: this.systemPrompt }
         ];
 
@@ -270,7 +209,7 @@ export abstract class MultiStepAgent {
         this.factsManager.updateFacts(factsUpdateOutput);
 
         // Create plan using the updated facts
-        const planMemory = [
+        const planMemory: ChatMessage[] = [
             {
                 role: MessageRole.SYSTEM,
                 content: SYSTEM_PROMPT_PLAN,
@@ -278,7 +217,8 @@ export abstract class MultiStepAgent {
             ...agentMemory,
             {
                 role: MessageRole.USER,
-                content: USER_PROMPT_PLAN.replace('{task}', task)
+                content: USER_PROMPT_PLAN
+                    .replace('{task}', task)
                     .replace('{tool_descriptions}', getToolDescriptions(this.tools, this.toolDescriptionTemplate))
                     .replace('{managed_agents_descriptions}', showAgentsDescriptions(this.managedAgents))
                     .replace('{answer_facts}', this.factsManager.formatFacts()),
@@ -301,7 +241,7 @@ export abstract class MultiStepAgent {
 export class ToolCallingAgent extends MultiStepAgent {
     constructor(
         tools: Tool[],
-        model: (messages: Array<Record<string, string>>) => Promise<string>,
+        model: (messages: ChatMessage[]) => Promise<string>,
         systemPrompt?: string,
         planningInterval?: number,
         options: Partial<{
@@ -355,12 +295,12 @@ export class ToolCallingAgent extends MultiStepAgent {
 }
 
 export class CodeAgent extends MultiStepAgent {
-    private pythonExecutor: any;  // TODO: implement Python executor
+    private pythonExecutor: any;
     private authorizedImports: string[];
 
     constructor(
         tools: Tool[],
-        model: (messages: Array<Record<string, string>>) => Promise<string>,
+        model: (messages: ChatMessage[]) => Promise<string>,
         systemPrompt?: string,
         grammar?: Record<string, string>,
         additionalAuthorizedImports?: string[],
@@ -384,7 +324,7 @@ export class CodeAgent extends MultiStepAgent {
             grammar,
             planningInterval,
             options.monitor,
-            new FactsManager() // Initialize FactsManager
+            new FactsManager()
         );
 
         this.authorizedImports = [...(additionalAuthorizedImports || [])];
@@ -447,20 +387,77 @@ export class ManagedAgent {
     ) {}
 
     public writeFullTask(task: string): string {
-        let fullTask = task;
-        if (this.additionalPrompting) {
-            fullTask += '\n\n' + this.additionalPrompting;
-        }
-        return fullTask;
+        return this.managedAgentPrompt
+            .replace('{name}', this.name)
+            .replace('{task}', task)
+            .replace('{additional_prompting}', this.additionalPrompting || '');
     }
 
     public async forward(request: string): Promise<any> {
-        const fullTask = this.writeFullTask(request);
-        const result = await this.agent.run(fullTask);
-        return result;
+        return this.agent.run(this.writeFullTask(request));
     }
 }
 
-export const YELLOW_HEX = '#d4b702';
+export function showAgentsDescriptions(managedAgents: Record<string, ManagedAgent>): string {
+    let descriptions = `
+You can also give requests to team members.
+Calling a team member works the same as for calling a tool: simply, the only argument you can give in the call is 'request', a long string explaining your request.
+Given that this team member is a real human, you should be very verbose in your request.
+Here is a list of the team members that you can call:`;
 
-export { MultiStepAgent, ToolCallingAgent, CodeAgent, ManagedAgent };
+    for (const agent of Object.values(managedAgents)) {
+        descriptions += `\n- ${agent.name}: ${agent.description}`;
+    }
+    
+    return descriptions;
+}
+
+export function formatPromptWithManagedAgentsDescriptions(
+    promptTemplate: string,
+    managedAgents: Record<string, ManagedAgent>,
+    agentDescriptionsPlaceholder: string = '{{managed_agents_descriptions}}'
+): string {
+    if (!promptTemplate.includes(agentDescriptionsPlaceholder)) {
+        throw new Error(
+            `Provided prompt template does not contain the managed agents descriptions placeholder '${agentDescriptionsPlaceholder}'`
+        );
+    }
+
+    if (Object.keys(managedAgents).length > 0) {
+        return promptTemplate.replace(
+            agentDescriptionsPlaceholder,
+            showAgentsDescriptions(managedAgents)
+        );
+    } else {
+        return promptTemplate.replace(agentDescriptionsPlaceholder, '');
+    }
+}
+
+export function getToolDescriptions(
+    tools: Record<string, Tool>,
+    toolDescriptionTemplate: string
+): string {
+    return Object.values(tools)
+        .map(tool => getToolDescriptionWithArgs(tool, toolDescriptionTemplate))
+        .join('\n');
+}
+
+export function formatPromptWithTools(
+    tools: Record<string, Tool>,
+    promptTemplate: string,
+    toolDescriptionTemplate: string
+): string {
+    let prompt = promptTemplate.replace(
+        '{{tool_descriptions}}',
+        getToolDescriptions(tools, toolDescriptionTemplate)
+    );
+    
+    if (prompt.includes('{{tool_names}}')) {
+        prompt = prompt.replace(
+            '{{tool_names}}',
+            Object.values(tools).map(tool => `'${tool.name}'`).join(', ')
+        );
+    }
+    
+    return prompt;
+}
