@@ -122,6 +122,14 @@ export class OpenAIServerModel extends Model {
             return response.choices[0].message as ChatMessage;
         }
     }
+
+    // Adapter function to convert OpenAIServerModel to agent-compatible function
+    toModelFunction(): (messages: ChatMessage[]) => Promise<string> {
+        return async (messages: ChatMessage[]): Promise<string> => {
+            const response = await this.call(messages);
+            return response.content || '';
+        };
+    }
 }
 
 export const DEFAULT_JSONAGENT_REGEX_GRAMMAR = {

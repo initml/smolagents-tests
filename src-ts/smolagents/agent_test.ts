@@ -36,7 +36,7 @@ const model = new OpenAIServerModel(
     process.env.OPENAI_API_KEY || ''
 );
 
-const agent = new ToolCallingAgent([weatherTool], model);
+const agent = new ToolCallingAgent([weatherTool], model.toModelFunction());
 
 async function main() {
     console.log(await agent.run("What's the weather like in Paris?"));
