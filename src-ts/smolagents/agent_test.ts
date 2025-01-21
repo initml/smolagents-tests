@@ -3,7 +3,7 @@ import { ToolCallingAgent } from './agents';
 import { OpenAIServerModel } from './models';
 
 export class WeatherTool extends Tool {
-    public override name = 'weather';
+    public override name = 'weatherForecast';
     public override description = 'Get the current weather for a location';
     public override inputs = {
         location: {
@@ -36,7 +36,15 @@ const model = new OpenAIServerModel(
     process.env.OPENAI_API_KEY || ''
 );
 
-const agent = new ToolCallingAgent([weatherTool], model.toModelFunction());
+const agent = new ToolCallingAgent(
+    [weatherTool], // tools
+    model.toModelFunction(), // model
+    undefined, // systemPrompt
+    undefined, // planningInterval
+    {
+        verbosityLevel: 2  // Set to DEBUG level
+    }
+);
 
 async function main() {
     console.log(await agent.run("What's the weather like in Paris?"));
