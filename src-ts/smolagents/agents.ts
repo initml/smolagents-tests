@@ -155,7 +155,39 @@ export abstract class MultiStepAgent {
     }
 
     protected async step(logEntry: ActionStep): Promise<any | null> {
-        throw new Error('Method not implemented');
+        const output = await this.model(logEntry.agentMemory || []);
+        logEntry.llmOutput = output;
+
+        let toolCall: ToolCall;
+        try {
+            const [name, args] = parseJsonToolCall(output);
+            toolCall = { name, arguments: args };
+        } catch (error) {
+            throw new AgentParsingError(`Failed to parse tool call: ${error}`);
+        }
+
+        logEntry.toolCalls = [toolCall];
+
+        const tool = this.tools[toolCall.name] || this.managedAgents[toolCall.name];
+        if (!tool) {
+            throw new AgentParsingError(`Unknown tool: ${toolCall.name}`);
+        }
+
+        if (tool instanceof Tool) {
+            const observation = await tool.forward(toolCall.arguments);
+            logEntry.observations = observation;
+            logEntry.agentMemory?.push({
+                role: MessageRole.ASSISTANT,
+                content: output,
+            });
+            logEntry.agentMemory?.push({
+                role: MessageRole.USER,
+                content: String(observation),
+            });
+            return null;
+        } else {
+            return tool.forward(toolCall.arguments.request);
+        }
     }
 
     public async run(task: string): Promise<any> {
@@ -269,28 +301,38 @@ export class ToolCallingAgent extends MultiStepAgent {
     }
 
     protected async step(logEntry: ActionStep): Promise<any | null> {
-        const output = await this.model(logEntry.agentMemory!);
+        const output = await this.model(logEntry.agentMemory || []);
         logEntry.llmOutput = output;
 
+        let toolCall: ToolCall;
         try {
-            const toolCall = parseJsonToolCall(output);
-            if (toolCall.name === 'finalAnswer') {
-                return toolCall.arguments.answer;
-            }
-
-            const tool = this.tools[toolCall.name] || this.managedAgents[toolCall.name];
-            if (!tool) {
-                throw new AgentParsingError(`Unknown tool: ${toolCall.name}`);
-            }
-
-            const observation = await tool.forward(toolCall.arguments);
-            logEntry.agentMemory!.push(
-                { role: MessageRole.ASSISTANT, content: output },
-                { role: MessageRole.USER, content: String(observation) }
-            );
-            return null;
+            const [name, args] = parseJsonToolCall(output);
+            toolCall = { name, arguments: args };
         } catch (error) {
-            throw new AgentParsingError(String(error));
+            throw new AgentParsingError(`Failed to parse tool call: ${error}`);
+        }
+
+        logEntry.toolCalls = [toolCall];
+
+        const tool = this.tools[toolCall.name] || this.managedAgents[toolCall.name];
+        if (!tool) {
+            throw new AgentParsingError(`Unknown tool: ${toolCall.name}`);
+        }
+
+        if (tool instanceof Tool) {
+            const observation = await tool.forward(toolCall.arguments);
+            logEntry.observations = observation;
+            logEntry.agentMemory?.push({
+                role: MessageRole.ASSISTANT,
+                content: output,
+            });
+            logEntry.agentMemory?.push({
+                role: MessageRole.USER,
+                content: String(observation),
+            });
+            return null;
+        } else {
+            return tool.forward(toolCall.arguments.request);
         }
     }
 }
@@ -353,7 +395,7 @@ export class CodeAgent extends MultiStepAgent {
     }
 
     protected async step(logEntry: ActionStep): Promise<any | null> {
-        const output = await this.model(logEntry.agentMemory!);
+        const output = await this.model(logEntry.agentMemory || []);
         logEntry.llmOutput = output;
 
         try {
@@ -366,7 +408,7 @@ export class CodeAgent extends MultiStepAgent {
             // TODO: implement Python executor
             const result = null; // await this.pythonExecutor.execute(code);
 
-            logEntry.agentMemory!.push(
+            logEntry.agentMemory?.push(
                 { role: MessageRole.ASSISTANT, content: output },
                 { role: MessageRole.USER, content: String(result) }
             );
