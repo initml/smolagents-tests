@@ -1,30 +1,13 @@
-/**
- * Copyright 2024 The HuggingFace Inc. team. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 import { Tool } from './tools';
+import OpenAI from 'openai';
 
-export const DEFAULT_JSONAGENT_REGEX_GRAMMAR = {
-    type: 'regex',
-    value: 'Thought: .+?\\nAction:\\n\\{\\n\\s{4}"action":\\s"[^"\\n]+",\\n\\s{4}"action_input":\\s"[^"\\n]+"\\n\\}\\n<end_code>',
-};
-
-export const DEFAULT_CODEAGENT_REGEX_GRAMMAR = {
-    type: 'regex',
-    value: 'Thought: .+?\\nCode:\\n```(?:ts|typescript)?\\n(?:.|\\s)+?\\n```<end_code>',
-};
+export enum MessageRole {
+    USER = 'user',
+    ASSISTANT = 'assistant',
+    SYSTEM = 'system',
+    TOOL_CALL = 'tool-call',
+    TOOL_RESPONSE = 'tool-response'
+}
 
 export interface ChatMessageToolCallDefinition {
     arguments: any;
@@ -39,113 +22,137 @@ export interface ChatMessageToolCall {
 }
 
 export interface ChatMessage {
-    role: string;
+    role: MessageRole;
     content?: string;
     tool_calls?: ChatMessageToolCall[];
-}
-
-export enum MessageRole {
-    USER = 'user',
-    ASSISTANT = 'assistant',
-    SYSTEM = 'system',
-    TOOL_CALL = 'tool-call',
-    TOOL_RESPONSE = 'tool-response',
+    tool_call_id?: string;
+    name?: string;
 }
 
 export const toolRoleConversions: Record<MessageRole, MessageRole> = {
+    [MessageRole.USER]: MessageRole.USER,
+    [MessageRole.ASSISTANT]: MessageRole.ASSISTANT,
+    [MessageRole.SYSTEM]: MessageRole.SYSTEM,
     [MessageRole.TOOL_CALL]: MessageRole.ASSISTANT,
-    [MessageRole.TOOL_RESPONSE]: MessageRole.USER,
-} as const;
-
-export function getJsonSchema(tool: Tool): Record<string, any> {
-    const properties = JSON.parse(JSON.stringify(tool.inputs)); // Deep clone
-    const required: string[] = [];
-    
-    for (const [key, value] of Object.entries(properties)) {
-        if (value.type === 'any') {
-            value.type = 'string';
-        }
-        if (!('nullable' in value && value.nullable)) {
-            required.push(key);
-        }
-    }
-    
-    return {
-        type: 'function',
-        function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: {
-                type: 'object',
-                properties,
-                required,
-            },
-        },
-    };
-}
-
-export function removeStopSequences(content: string, stopSequences: string[]): string {
-    for (const stopSeq of stopSequences) {
-        if (content.slice(-stopSeq.length) === stopSeq) {
-            content = content.slice(0, -stopSeq.length);
-        }
-    }
-    return content;
-}
+    [MessageRole.TOOL_RESPONSE]: MessageRole.USER
+};
 
 export function getCleanMessageList(
-    messageList: Record<string, string>[],
+    messages: ChatMessage[],
     roleConversions: Partial<Record<MessageRole, MessageRole>> = {}
-): Record<string, string>[] {
-    const finalMessageList: Record<string, string>[] = [];
-    messageList = JSON.parse(JSON.stringify(messageList)); // Deep clone
-    
-    for (const message of messageList) {
-        const role = message.role;
-        if (!Object.values(MessageRole).includes(role as MessageRole)) {
-            throw new Error(
-                `Incorrect role ${role}, only ${Object.values(MessageRole).join(', ')} are supported for now.`
-            );
-        }
-
-        if (role in roleConversions) {
-            message.role = roleConversions[role as MessageRole]!;
-        }
-
-        if (
-            finalMessageList.length > 0 &&
-            message.role === finalMessageList[finalMessageList.length - 1].role
-        ) {
-            finalMessageList[finalMessageList.length - 1].content += 
-                '\n=======\n' + message.content;
-        } else {
-            finalMessageList.push(message);
-        }
-    }
-    return finalMessageList;
+): ChatMessage[] {
+    return messages.map(msg => ({
+        ...msg,
+        role: roleConversions[msg.role] || msg.role
+    }));
 }
 
 export abstract class Model {
-    protected lastInputTokenCount?: number;
-    protected lastOutputTokenCount?: number;
-
-    getTokenCounts(): { input?: number; output?: number } {
-        return {
-            input: this.lastInputTokenCount,
-            output: this.lastOutputTokenCount,
-        };
-    }
+    protected lastInputTokenCount: number = 0;
+    protected lastOutputTokenCount: number = 0;
 
     abstract call(
-        messages: Record<string, string>[],
+        messages: ChatMessage[],
         stopSequences?: string[],
         grammar?: string,
         maxTokens?: number,
         toolsToCallFrom?: Tool[]
-    ): Promise<string>;
+    ): Promise<ChatMessage>;
 }
 
-// Note: The following classes (HfApiModel, TransformersModel, LiteLLMModel, OpenAIServerModel)
-// would need to be implemented differently in TypeScript as they rely heavily on Python-specific
-// libraries and functionality. You would need to use appropriate TypeScript/JavaScript alternatives
-// for these implementations.
+/**
+ * This engine connects to an OpenAI-compatible API server.
+ */
+export class OpenAIServerModel extends Model {
+    private modelId: string;
+    private client: OpenAI;
+    private temperature: number;
+    private kwargs: Record<string, any>;
+
+    constructor(
+        modelId: string,
+        apiBase: string,
+        apiKey: string,
+        temperature: number = 0.7,
+        kwargs: Record<string, any> = {}
+    ) {
+        super();
+        this.modelId = modelId;
+        this.client = new OpenAI({
+            baseURL: apiBase,
+            apiKey: apiKey,
+        });
+        this.temperature = temperature;
+        this.kwargs = kwargs;
+    }
+
+    async call(
+        messages: ChatMessage[],
+        stopSequences?: string[],
+        grammar?: string,
+        maxTokens: number = 1500,
+        toolsToCallFrom?: Tool[]
+    ): Promise<ChatMessage> {
+        const cleanMessages = getCleanMessageList(messages, toolRoleConversions);
+
+        const baseParams: OpenAI.Chat.ChatCompletionCreateParams = {
+            model: this.modelId,
+            messages: cleanMessages as OpenAI.Chat.ChatCompletionMessageParam[],
+            stop: stopSequences,
+            max_tokens: maxTokens,
+            temperature: this.temperature,
+            ...this.kwargs,
+        };
+
+        if (toolsToCallFrom) {
+            const response = await this.client.chat.completions.create({
+                ...baseParams,
+                tools: toolsToCallFrom.map(tool => ({
+                    type: 'function',
+                    function: {
+                        name: tool.name,
+                        description: tool.description,
+                        parameters: getJsonSchema(tool)
+                    }
+                }))
+            });
+            return response.choices[0].message as ChatMessage;
+        } else {
+            const response = await this.client.chat.completions.create(baseParams);
+            return response.choices[0].message as ChatMessage;
+        }
+    }
+}
+
+export const DEFAULT_JSONAGENT_REGEX_GRAMMAR = {
+    type: 'regex',
+    value: 'Thought: .+?\\nAction:\\n\\{\\n\\s{4}"action":\\s"[^"\\n]+",\\n\\s{4}"action_input":\\s"[^"\\n]+"\\n\\}\\n<end_code>',
+};
+
+function getJsonSchema(tool: Tool): Record<string, any> {
+    return {
+        type: 'object',
+        properties: Object.fromEntries(
+            Object.entries(tool.inputs).map(([name, input]) => [
+                name,
+                {
+                    type: input.type,
+                    description: input.description,
+                }
+            ])
+        ),
+        required: Object.entries(tool.inputs)
+            .filter(([_, input]) => !input.nullable)
+            .map(([name, _]) => name)
+    };
+}
+
+function removeStopSequences(content: string, stopSequences: string[]): string {
+    let result = content;
+    for (const stop of stopSequences) {
+        if (result.endsWith(stop)) {
+            result = result.slice(0, -stop.length);
+        }
+    }
+    return result;
+}
