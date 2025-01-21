@@ -1,28 +1,31 @@
-import { Tool } from './tools';
+import { Tool, AuthorizedType } from './tools';
 
 interface WeatherOptions {
     location: string;
     celsius?: boolean;
 }
 
-class WeatherTool extends Tool {
-    name = 'getWeather';
-    description = 'Get weather in the next days at given location';
+export class WeatherTool extends Tool {
+    name = 'weather';
+    description = 'Get the current weather for a location';
     inputs = {
         location: {
-            type: 'string',
+            type: 'string' as AuthorizedType,
             description: 'The location to get weather for'
         },
         celsius: {
-            type: 'boolean',
-            description: 'Whether to return temperature in Celsius',
+            type: 'boolean' as AuthorizedType,
+            description: 'Whether to return temperature in celsius',
             optional: true
         }
     };
-    outputType = 'string';
+    outputType: AuthorizedType = 'string';
 
-    async forward({ location, celsius = false }: WeatherOptions): Promise<string> {
-        return "The weather is UNGODLY with torrential rains and temperatures below -10°C";
+    async forward({ location, celsius = true }: WeatherOptions): Promise<string> {
+        // Mock implementation
+        const temp = celsius ? 20 : 68;
+        const unit = celsius ? 'C' : 'F';
+        return `The temperature in ${location} is ${temp}°${unit}`;
     }
 }
 
