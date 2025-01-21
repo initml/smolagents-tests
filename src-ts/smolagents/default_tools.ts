@@ -18,7 +18,6 @@ import { Tool } from './tools';
 import { evaluateJavaScriptCode } from './local_js_executor';
 import { BASE_JS_TOOLS } from './local_js_executor';
 import { AuthorizedType } from './tools';
-import { AgentAudio } from './types';
 import fetch from 'node-fetch';
 import * as readline from 'readline';
 
@@ -31,44 +30,6 @@ interface PreTool {
     repoId: string;
 }
 
-export async function getRemoteTools(
-    logger: { info: (message: string) => void },
-    organization = 'huggingface-tools'
-): Promise<Record<string, PreTool>> {
-    try {
-        const response = await fetch(`https://huggingface.co/api/spaces/${organization}`);
-        if (!response.ok) {
-            throw new Error('Failed to fetch spaces');
-        }
-        const spaces = await response.json();
-        const tools: Record<string, PreTool> = {};
-
-        for (const spaceInfo of spaces) {
-            const repoId = spaceInfo.id;
-            const configResponse = await fetch(
-                `https://huggingface.co/${repoId}/raw/main/tool_config.json`
-            );
-            if (!configResponse.ok) continue;
-
-            const config = await configResponse.json();
-            const task = repoId.split('/').pop()!;
-            
-            tools[config.name] = {
-                task,
-                description: config.description,
-                repoId,
-                name: task,
-                inputs: config.inputs,
-                outputType: config.output_type,
-            };
-        }
-
-        return tools;
-    } catch (error) {
-        logger.info('Failed to fetch remote tools.');
-        return {};
-    }
-}
 
 export class JavaScriptInterpreterTool extends Tool {
     name = 'javascript_interpreter';
@@ -102,14 +63,15 @@ export class FinalAnswerTool extends Tool {
     description = 'Provides a final answer to the given problem.';
     inputs = {
         answer: {
-            type: 'any' as const,
+            type: 'string' as const,
             description: 'The final answer to the problem',
+            nullable: false
         },
     };
-    outputType = 'any' as const;
+    outputType = 'string' as const;
 
-    async forward(answer: any): Promise<any> {
-        return answer;
+    async forward(answer: any): Promise<string> {
+        return typeof answer === 'string' ? answer : JSON.stringify(answer);
     }
 }
 
