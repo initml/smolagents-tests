@@ -116,7 +116,6 @@ export abstract class MultiStepAgent {
     protected toolParser?: (output: string) => any;
     protected logger: AgentLogger;
     protected grammar?: Record<string, string>;
-    protected managedAgents: Record<string, ManagedAgent>;
     protected planningInterval?: number;
     protected monitor?: any;
     protected lastPlan?: string;
@@ -148,7 +147,6 @@ export abstract class MultiStepAgent {
         this.toolParser = toolParser;
         this.logger = new AgentLogger(verbosityLevel as LogLevel);
         this.grammar = grammar;
-        this.managedAgents = {};
         this.planningInterval = planningInterval;
         this.monitor = monitor;
         this.factsManager = factsManager || new FactsManager();
@@ -168,13 +166,13 @@ export abstract class MultiStepAgent {
 
         logEntry.toolCalls = [toolCall];
 
-        const tool = this.tools[toolCall.name] || this.managedAgents[toolCall.name];
+        const tool = this.tools[toolCall.name];
         if (!tool) {
             throw new AgentParsingError(`Unknown tool: ${toolCall.name}`);
         }
 
         if (tool instanceof Tool) {
-            const observation = await tool.forward(toolCall.arguments);
+            const observation = await tool.call(toolCall.arguments);
             logEntry.observations = observation;
             logEntry.agentMemory?.push({
                 role: MessageRole.ASSISTANT,
@@ -186,7 +184,7 @@ export abstract class MultiStepAgent {
             });
             return null;
         } else {
-            return tool.forward(toolCall.arguments.request);
+            throw new AgentParsingError(`Invalid tool type for: ${toolCall.name}`);
         }
     }
 
@@ -253,21 +251,12 @@ export abstract class MultiStepAgent {
                 content: USER_PROMPT_PLAN
                     .replace('{task}', task)
                     .replace('{tool_descriptions}', getToolDescriptions(this.tools, this.toolDescriptionTemplate))
-                    .replace('{managed_agents_descriptions}', showAgentsDescriptions(this.managedAgents))
                     .replace('{answer_facts}', this.factsManager.formatFacts()),
             },
         ];
 
         const planOutput = await this.model(planMemory);
         return new PlanningStep(planOutput, this.factsManager.formatFacts());
-    }
-
-    public addManagedAgent(agent: ManagedAgent): void {
-        this.managedAgents[agent.name] = agent;
-        this.systemPrompt = formatPromptWithManagedAgentsDescriptions(
-            this.systemPrompt,
-            this.managedAgents
-        );
     }
 }
 
@@ -314,13 +303,13 @@ export class ToolCallingAgent extends MultiStepAgent {
 
         logEntry.toolCalls = [toolCall];
 
-        const tool = this.tools[toolCall.name] || this.managedAgents[toolCall.name];
+        const tool = this.tools[toolCall.name];
         if (!tool) {
             throw new AgentParsingError(`Unknown tool: ${toolCall.name}`);
         }
 
         if (tool instanceof Tool) {
-            const observation = await tool.forward(toolCall.arguments);
+            const observation = await tool.call(toolCall.arguments);
             logEntry.observations = observation;
             logEntry.agentMemory?.push({
                 role: MessageRole.ASSISTANT,
@@ -332,147 +321,8 @@ export class ToolCallingAgent extends MultiStepAgent {
             });
             return null;
         } else {
-            return tool.forward(toolCall.arguments.request);
+            throw new AgentParsingError(`Invalid tool type for: ${toolCall.name}`);
         }
-    }
-}
-
-export class CodeAgent extends MultiStepAgent {
-    private pythonExecutor: any;
-    private authorizedImports: string[];
-
-    constructor(
-        tools: Tool[],
-        model: (messages: ChatMessage[]) => Promise<string>,
-        systemPrompt?: string,
-        grammar?: Record<string, string>,
-        additionalAuthorizedImports?: string[],
-        planningInterval?: number,
-        useE2bExecutor: boolean = false,
-        options: Partial<{
-            maxSteps: number;
-            verbosityLevel: number;
-            monitor: any;
-        }> = {}
-    ) {
-        super(
-            tools,
-            model,
-            systemPrompt || CODE_SYSTEM_PROMPT,
-            undefined,
-            options.maxSteps,
-            undefined,
-            false,
-            options.verbosityLevel,
-            grammar,
-            planningInterval,
-            options.monitor,
-            new FactsManager()
-        );
-
-        this.authorizedImports = [...(additionalAuthorizedImports || [])];
-        
-        if (!this.systemPrompt.includes('{{authorized_imports}}')) {
-            throw new AgentError("Tag '{{authorized_imports}}' should be provided in the prompt.");
-        }
-
-        this.systemPrompt = this.systemPrompt.replace(
-            '{{authorized_imports}}',
-            this.authorizedImports.includes('*')
-                ? 'You can import from any package you want.'
-                : String(this.authorizedImports)
-        );
-
-        if (this.authorizedImports.includes('*')) {
-            this.logger.log(
-                'Caution: you set an authorization for all imports, meaning your agent can decide to import any package it deems necessary. This might raise issues if the package is not installed in your environment.',
-                { level: LogLevel.ERROR }
-            );
-        }
-
-        // TODO: implement Python executor initialization
-        this.pythonExecutor = null;
-    }
-
-    protected async step(logEntry: ActionStep): Promise<any | null> {
-        const output = await this.model(logEntry.agentMemory || []);
-        logEntry.llmOutput = output;
-
-        try {
-            const codeBlobs = parseCodeBlobs(output);
-            if (codeBlobs.length === 0) {
-                throw new AgentParsingError('No code block found in the output');
-            }
-
-            const code = codeBlobs[codeBlobs.length - 1];
-            // TODO: implement Python executor
-            const result = null; // await this.pythonExecutor.execute(code);
-
-            logEntry.agentMemory?.push(
-                { role: MessageRole.ASSISTANT, content: output },
-                { role: MessageRole.USER, content: String(result) }
-            );
-            return null;
-        } catch (error) {
-            throw new AgentParsingError(String(error));
-        }
-    }
-}
-
-export class ManagedAgent {
-    constructor(
-        public agent: MultiStepAgent,
-        public name: string,
-        public description: string,
-        public additionalPrompting?: string,
-        public provideRunSummary: boolean = false,
-        public managedAgentPrompt: string = MANAGED_AGENT_PROMPT
-    ) {}
-
-    public writeFullTask(task: string): string {
-        return this.managedAgentPrompt
-            .replace('{name}', this.name)
-            .replace('{task}', task)
-            .replace('{additional_prompting}', this.additionalPrompting || '');
-    }
-
-    public async forward(request: string): Promise<any> {
-        return this.agent.run(this.writeFullTask(request));
-    }
-}
-
-export function showAgentsDescriptions(managedAgents: Record<string, ManagedAgent>): string {
-    let descriptions = `
-You can also give requests to team members.
-Calling a team member works the same as for calling a tool: simply, the only argument you can give in the call is 'request', a long string explaining your request.
-Given that this team member is a real human, you should be very verbose in your request.
-Here is a list of the team members that you can call:`;
-
-    for (const agent of Object.values(managedAgents)) {
-        descriptions += `\n- ${agent.name}: ${agent.description}`;
-    }
-    
-    return descriptions;
-}
-
-export function formatPromptWithManagedAgentsDescriptions(
-    promptTemplate: string,
-    managedAgents: Record<string, ManagedAgent>,
-    agentDescriptionsPlaceholder: string = '{{managed_agents_descriptions}}'
-): string {
-    if (!promptTemplate.includes(agentDescriptionsPlaceholder)) {
-        throw new Error(
-            `Provided prompt template does not contain the managed agents descriptions placeholder '${agentDescriptionsPlaceholder}'`
-        );
-    }
-
-    if (Object.keys(managedAgents).length > 0) {
-        return promptTemplate.replace(
-            agentDescriptionsPlaceholder,
-            showAgentsDescriptions(managedAgents)
-        );
-    } else {
-        return promptTemplate.replace(agentDescriptionsPlaceholder, '');
     }
 }
 
