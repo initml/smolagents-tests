@@ -32,7 +32,7 @@ export const CONVERSION_DICT: Record<string, AuthorizedType> = {
 export interface ToolInput {
     type: AuthorizedType;
     description: string;
-    nullable?: boolean;
+    optional?: boolean;
 }
 
 export interface ToolConfig {
@@ -45,54 +45,13 @@ export interface ToolConfig {
 /**
  * Base class for the functions used by the agent.
  */
-export class Tool implements ToolConfig {
+export abstract class Tool implements ToolConfig {
     public name!: string;
     public description!: string;
     public inputs!: Record<string, ToolInput>;
     public outputType!: AuthorizedType;
     protected isInitialized: boolean = false;
 
-    constructor() {
-        this.validateArguments();
-    }
-
-    protected validateArguments(): void {
-        if (!this.name || typeof this.name !== 'string') {
-            throw new TypeError('Tool must have a name of type string');
-        }
-
-        if (!this.description || typeof this.description !== 'string') {
-            throw new TypeError('Tool must have a description of type string');
-        }
-
-        if (!this.inputs || typeof this.inputs !== 'object') {
-            throw new TypeError('Tool must have inputs of type object');
-        }
-
-        for (const [inputName, inputContent] of Object.entries(this.inputs)) {
-            if (typeof inputContent !== 'object') {
-                throw new TypeError(`Input '${inputName}' should be an object`);
-            }
-
-            if (!('type' in inputContent) || !('description' in inputContent)) {
-                throw new TypeError(
-                    `Input '${inputName}' should have keys 'type' and 'description'`
-                );
-            }
-
-            if (!AUTHORIZED_TYPES.includes(inputContent.type)) {
-                throw new TypeError(
-                    `Input '${inputName}': type '${inputContent.type}' is not an authorized value, should be one of ${AUTHORIZED_TYPES.join(', ')}`
-                );
-            }
-        }
-
-        if (!AUTHORIZED_TYPES.includes(this.outputType)) {
-            throw new TypeError(
-                `Output type '${this.outputType}' is not an authorized value, should be one of ${AUTHORIZED_TYPES.join(', ')}`
-            );
-        }
-    }
 
     /**
      * Setup method that will be called before the first use of the tool.

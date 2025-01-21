@@ -150,7 +150,7 @@ function getJsonSchema(tool: Tool): Record<string, any> {
             ])
         ),
         required: Object.entries(tool.inputs)
-            .filter(([_, input]) => !input.nullable)
+            .filter(([_, input]) => !input.optional)
             .map(([name, _]) => name)
     };
 }
