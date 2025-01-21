@@ -74,9 +74,10 @@ export async function evaluateJavaScriptCode(
         });
 
         // Handle the result
-        if (Array.isArray(result) && result.length === 2) {
-            return result;
+        if (Array.isArray(result) && result.length === 2 && typeof result[1] === 'boolean') {
+            return result as [any, boolean];
         }
+        // If result is not a valid tuple, wrap it as a non-final answer
         return [result, false];
     } catch (error) {
         if (error instanceof Error) {
@@ -113,15 +114,21 @@ export function createSafeBuiltins() {
 /**
  * Wraps a tool to make it safe for use in the JavaScript executor
  */
-export function wrapToolForExecution(tool: any) {
-    return async (...args: any[]) => {
+export function wrapToolForExecution(tool: any): (...args: any[]) => Promise<[any, boolean]> {
+    return async (...args: any[]): Promise<[any, boolean]> => {
         try {
-            return await tool(...args);
+            const result = await tool(...args);
+            // If result is already a tuple with [value, boolean], return it
+            if (Array.isArray(result) && result.length === 2 && typeof result[1] === 'boolean') {
+                return result as [any, boolean];
+            }
+            // Otherwise, wrap the result in a tuple with false to indicate it's not a final answer
+            return [result, false];
         } catch (error) {
             if (error instanceof Error) {
-                throw new Error(`Tool execution failed: ${error.message}`);
+                return [error.message, false];
             }
-            throw new Error('Tool execution failed with unknown error');
+            return ['Tool execution failed with unknown error', false];
         }
     };
 }
