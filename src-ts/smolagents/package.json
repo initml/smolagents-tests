@@ -5,8 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/tool_calling_agent_from_any_llm.js",
-    "dev": "ts-node-dev --respawn --transpile-only tool_calling_agent_from_any_llm.ts",
+    "start": "node dist/agent_test.js",
+    "dev": "ts-node-dev --respawn --transpile-only agent_test.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {

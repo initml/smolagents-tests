@@ -1,4 +1,4 @@
-import { Tool } from '../tools';
+import { Tool } from './tools';
 
 interface WeatherOptions {
     location: string;
