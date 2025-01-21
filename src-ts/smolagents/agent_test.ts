@@ -1,14 +1,11 @@
 import { Tool, AuthorizedType } from './tools';
-
-interface WeatherOptions {
-    location: string;
-    celsius?: boolean;
-}
+import { ToolCallingAgent } from './agents';
+import { OpenAIServerModel } from './models';
 
 export class WeatherTool extends Tool {
-    name = 'weather';
-    description = 'Get the current weather for a location';
-    inputs = {
+    public override name = 'weather';
+    public override description = 'Get the current weather for a location';
+    public override inputs = {
         location: {
             type: 'string' as AuthorizedType,
             description: 'The location to get weather for'
@@ -19,20 +16,32 @@ export class WeatherTool extends Tool {
             optional: true
         }
     };
-    outputType: AuthorizedType = 'string';
+    public override outputType: AuthorizedType = 'string';
 
-    async forward({ location, celsius = true }: WeatherOptions): Promise<string> {
-        // Mock implementation
-        const temp = celsius ? 20 : 68;
-        const unit = celsius ? 'C' : 'F';
-        return `The temperature in ${location} is ${temp}°${unit}`;
+    constructor() {
+        super();
+    }
+
+    protected override async forward(args: Record<string, any>): Promise<string> {
+        const { location, celsius = true } = args;
+        return "The weather is UNGODLY with torrential rains and temperatures below -10°C";
     }
 }
 
+const weatherTool = new WeatherTool();
+
+const model = new OpenAIServerModel(
+    'gpt-4',
+    'https://api.openai.com/v1',
+    process.env.OPENAI_API_KEY || ''
+);
+
+const agent = new ToolCallingAgent([weatherTool], model);
+
 async function main() {
-    const weatherTool = new WeatherTool();
-    const result = await weatherTool.forward({ location: "Paris" });
-    console.log(result);
+    console.log(await agent.run("What's the weather like in Paris?"));
 }
 
-main().catch(console.error);
+if (require.main === module) {
+    main().catch(console.error);
+}
