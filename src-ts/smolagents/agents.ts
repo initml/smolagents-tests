@@ -175,10 +175,11 @@ export abstract class MultiStepAgent {
             memory.push({ role: MessageRole.USER, content: task });
         }
 
-        for (let step = 0; step < this.maxSteps; step++) {
+        let step = 0;
+        while (step < this.maxSteps) {
             const logEntry = new ActionStep({
                 agentMemory: memory,
-                step: step + 1,
+                step,
                 startTime: Date.now()
             });
 
@@ -191,13 +192,13 @@ export abstract class MultiStepAgent {
                 if (error instanceof AgentError) {
                     throw error;
                 }
-                throw new AgentExecutionError(String(error));
+                throw new AgentExecutionError(`Error during step ${step}: ${error}`);
             }
 
-            if (step === this.maxSteps - 1) {
-                throw new AgentMaxStepsError();
-            }
+            step++;
         }
+
+        throw new AgentMaxStepsError(`Maximum number of steps (${this.maxSteps}) reached without finding a solution.`);
     }
 
     protected async plan(task: string): Promise<PlanningStep> {
