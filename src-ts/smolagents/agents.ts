@@ -232,7 +232,7 @@ export abstract class MultiStepAgent {
     }
 
     protected async plan(task: string): Promise<PlanningStep> {
-        const agentMemory = this.writeInnerMemoryFromLogs();
+        const agentMemory = await this.writeInnerMemoryFromLogs();
 
         // Get updated facts from the FactsManager
         const factsUpdateMessages = this.factsManager.getFactsUpdateMessages(agentMemory);
@@ -257,6 +257,24 @@ export abstract class MultiStepAgent {
 
         const planOutput = await this.model(planMemory);
         return new PlanningStep(planOutput, this.factsManager.formatFacts());
+    }
+
+    protected async writeInnerMemoryFromLogs(): Promise<ChatMessage[]> {
+        // Initialize memory with system prompt
+        const memory: ChatMessage[] = [
+            { role: MessageRole.SYSTEM, content: this.systemPrompt }
+        ];
+
+        // Add any facts from the facts manager
+        const facts = this.factsManager.formatFacts();
+        if (facts) {
+            memory.push({
+                role: MessageRole.USER,
+                content: `Here are some facts I know:\n${facts}`
+            });
+        }
+
+        return memory;
     }
 }
 
