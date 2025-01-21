@@ -1,0 +1,18 @@
+{
+  "name": "smolagents-ts",
+  "version": "1.0.0",
+  "description": "TypeScript version of smolagents",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/tool_calling_agent_from_any_llm.js"
+  },
+  "dependencies": {
+    "@e2b/sdk": "^0.11.13",
+    "dotenv": "^16.3.1",
+    "typescript": "^5.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5"
+  }
+}
