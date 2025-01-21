@@ -17,8 +17,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { v4 as uuidv4 } from 'uuid';
-
 /**
  * Abstract class to be implemented to define types that can be returned by agents.
  */
@@ -50,123 +48,13 @@ export class AgentText extends AgentType<string> {
     }
 }
 
-/**
- * Image type returned by the agent.
- */
-export class AgentImage extends AgentType<Buffer | string> {
-    private _path: string | null = null;
-    private _raw: Buffer | null = null;
-
-    constructor(value: Buffer | string) {
-        super(value);
-        
-        if (value instanceof Buffer) {
-            this._raw = value;
-        } else if (typeof value === 'string') {
-            this._path = value;
-        } else {
-            throw new TypeError(`Unsupported type for AgentImage: ${typeof value}`);
-        }
-    }
-
-    toRaw(): Buffer {
-        if (this._raw) {
-            return this._raw;
-        }
-
-        if (this._path) {
-            return fs.readFileSync(this._path);
-        }
-
-        throw new Error('No valid image data available');
-    }
-
-    toString(): string {
-        if (this._path) {
-            return this._path;
-        }
-
-        if (this._raw) {
-            const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-image-'));
-            this._path = path.join(directory, `${uuidv4()}.png`);
-            fs.writeFileSync(this._path, this._raw);
-            return this._path;
-        }
-
-        throw new Error('No valid image data available');
-    }
-
-    save(outputPath: string): void {
-        fs.writeFileSync(outputPath, this.toRaw());
-    }
-}
-
-/**
- * Audio type returned by the agent.
- */
-export class AgentAudio extends AgentType<Buffer | string> {
-    private _path: string | null = null;
-    private _raw: Buffer | null = null;
-    private _samplerate: number;
-
-    constructor(value: Buffer | string, samplerate: number = 16000) {
-        super(value);
-        this._samplerate = samplerate;
-
-        if (value instanceof Buffer) {
-            this._raw = value;
-        } else if (typeof value === 'string') {
-            this._path = value;
-        } else {
-            throw new TypeError(`Unsupported type for AgentAudio: ${typeof value}`);
-        }
-    }
-
-    toRaw(): Buffer {
-        if (this._raw) {
-            return this._raw;
-        }
-
-        if (this._path) {
-            return fs.readFileSync(this._path);
-        }
-
-        throw new Error('No valid audio data available');
-    }
-
-    toString(): string {
-        if (this._path) {
-            return this._path;
-        }
-
-        if (this._raw) {
-            const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-audio-'));
-            this._path = path.join(directory, `${uuidv4()}.wav`);
-            fs.writeFileSync(this._path, this._raw);
-            return this._path;
-        }
-
-        throw new Error('No valid audio data available');
-    }
-
-    get samplerate(): number {
-        return this._samplerate;
-    }
-}
-
 export const AGENT_TYPE_MAPPING = {
-    string: AgentText,
-    image: AgentImage,
-    audio: AgentAudio
+    string: AgentText
 } as const;
 
 export function handleAgentInputTypes<T>(value: T): AgentType<unknown> {
     if (typeof value === 'string') {
         return new AgentText(value);
-    }
-    if (value instanceof Buffer) {
-        // You might want to add more sophisticated detection here
-        return new AgentImage(value);
     }
     throw new TypeError(`Unsupported input type: ${typeof value}`);
 }
@@ -179,6 +67,9 @@ export function handleAgentOutputTypes(
         return output;
     }
     if (outputType && outputType in AGENT_TYPE_MAPPING) {
+        if (typeof output !== 'string') {
+            throw new TypeError(`Output must be a string for type '${outputType}'`);
+        }
         return new AGENT_TYPE_MAPPING[outputType](output);
     }
     return handleAgentInputTypes(output);
