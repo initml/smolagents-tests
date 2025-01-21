@@ -19,10 +19,6 @@ export const AUTHORIZED_TYPES = [
     'boolean',
     'integer',
     'number',
-    'image',
-    'audio',
-    'any',
-    'object',
 ] as const;
 
 export type AuthorizedType = typeof AUTHORIZED_TYPES[number];
@@ -49,11 +45,11 @@ export interface ToolConfig {
 /**
  * Base class for the functions used by the agent.
  */
-export abstract class Tool implements ToolConfig {
-    public name: string;
-    public description: string;
-    public inputs: Record<string, ToolInput>;
-    public outputType: AuthorizedType;
+export class Tool implements ToolConfig {
+    public name!: string;
+    public description!: string;
+    public inputs!: Record<string, ToolInput>;
+    public outputType!: AuthorizedType;
     protected isInitialized: boolean = false;
 
     constructor() {
@@ -110,7 +106,9 @@ export abstract class Tool implements ToolConfig {
      * Main method to implement in subclasses.
      * This is where the actual tool functionality should be implemented.
      */
-    protected abstract forward(...args: any[]): Promise<any>;
+    protected async forward(...args: any[]): Promise<any> {
+        throw new Error('Method not implemented.');
+    }
 
     /**
      * Main entry point to use the tool.
