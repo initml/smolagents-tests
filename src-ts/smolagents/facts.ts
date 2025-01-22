@@ -1,4 +1,5 @@
 import { MessageRole, ChatMessage } from "./models";
+import { AgentLogger, LogLevel } from "./logger";
 
 /**
  * Represents the structure of facts in the agent's knowledge base
@@ -40,6 +41,7 @@ Now write your new list of facts below.`;
  */
 export class FactsManager {
   private facts: Facts;
+  private logger: AgentLogger;
 
   constructor() {
     this.facts = {
@@ -48,12 +50,15 @@ export class FactsManager {
       toLookUp: [],
       toDerive: [],
     };
+    this.logger = AgentLogger.getInstance({ source: 'FactsManager', level: LogLevel.DEBUG });
+    this.logger.log('FactsManager initialized', { level: LogLevel.DEBUG });
   }
 
   /**
    * Parse facts from LLM output into structured format
    */
   private parseFactsFromOutput(output: string): Facts {
+    this.logger.log('Parsing facts from output', { level: LogLevel.DEBUG });
     const sections = output.split("###").filter(s => s.trim());
     const facts: Facts = {
       givenInTask: [],
@@ -68,12 +73,16 @@ export class FactsManager {
 
       if (title.includes("Facts given in the task")) {
         facts.givenInTask = factsArray;
+        this.logger.log('Parsed facts given in task:', factsArray, { level: LogLevel.DEBUG });
       } else if (title.includes("Facts that we have learned") || title.includes("Facts we have learned")) {
         facts.learned = factsArray;
+        this.logger.log('Parsed facts learned:', factsArray, { level: LogLevel.DEBUG });
       } else if (title.includes("Facts still to look up") || title.includes("Facts to look up")) {
         facts.toLookUp = factsArray;
+        this.logger.log('Parsed facts to look up:', factsArray, { level: LogLevel.DEBUG });
       } else if (title.includes("Facts still to derive") || title.includes("Facts to derive")) {
         facts.toDerive = factsArray;
+        this.logger.log('Parsed facts to derive:', factsArray, { level: LogLevel.DEBUG });
       }
     }
 
@@ -84,7 +93,8 @@ export class FactsManager {
    * Format facts into a string representation
    */
   public formatFacts(): string {
-    return `### 1. Facts given in the task
+    this.logger.log('Formatting facts', { level: LogLevel.DEBUG });
+    const formatted = `### 1. Facts given in the task
 ${this.facts.givenInTask.join("\n")}
 
 ### 2. Facts that we have learned
@@ -95,30 +105,31 @@ ${this.facts.toLookUp.join("\n")}
 
 ### 4. Facts still to derive
 ${this.facts.toDerive.join("\n")}`;
+    this.logger.log('Formatted facts:', formatted, { level: LogLevel.DEBUG });
+    return formatted;
   }
 
   /**
    * Update facts based on model output
    */
-  public updateFacts(modelOutput: string) {
-    this.facts = this.parseFactsFromOutput(modelOutput);
+  public updateFacts(output: string): void {
+    this.logger.log('Updating facts from output', { level: LogLevel.DEBUG });
+    this.facts = this.parseFactsFromOutput(output);
+    this.logger.log('Updated facts:', this.facts, { level: LogLevel.DEBUG });
   }
 
   /**
-   * Get messages for facts update
+   * Get messages for updating facts based on conversation history
    */
   public getFactsUpdateMessages(agentMemory: ChatMessage[]): ChatMessage[] {
-    return [
-      {
-        role: MessageRole.SYSTEM,
-        content: SYSTEM_PROMPT_FACTS_UPDATE,
-      },
+    this.logger.log('Getting facts update messages', { level: LogLevel.DEBUG });
+    const messages: ChatMessage[] = [
+      { role: MessageRole.SYSTEM, content: SYSTEM_PROMPT_FACTS_UPDATE },
       ...agentMemory,
-      {
-        role: MessageRole.USER,
-        content: USER_PROMPT_FACTS_UPDATE,
-      },
+      { role: MessageRole.USER, content: USER_PROMPT_FACTS_UPDATE }
     ];
+    this.logger.log('Facts update messages:', messages, { level: LogLevel.DEBUG });
+    return messages;
   }
 
   /**
