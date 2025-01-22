@@ -186,7 +186,9 @@ Here is my new/updated plan of action to solve the task:
  * Get the tool calling system prompt with the provided tool names and descriptions
  */
 export function getToolCallingSystemPrompt(toolNames: string[]): string {
-    return TOOL_CALLING_SYSTEM_PROMPT_TEMPLATE.replace('{tool_names}', toolNames.join(', '));
+    const toolNamesStr = toolNames.join(', ');
+    return TOOL_CALLING_SYSTEM_PROMPT_TEMPLATE
+        .replace(/\{tool_names\}/g, toolNamesStr);
 }
 
 /**
@@ -194,8 +196,8 @@ export function getToolCallingSystemPrompt(toolNames: string[]): string {
  */
 export function getManagedAgentPrompt(name: string, task: string): string {
     return MANAGED_AGENT_PROMPT_TEMPLATE
-        .replace('{name}', name)
-        .replace('{task}', task);
+        .replace(/\{name\}/g, name)
+        .replace(/\{task\}/g, task);
 }
 
 /**
@@ -215,17 +217,18 @@ export function getUserPromptPlan(
     answerFacts: string
 ): string {
     return USER_PROMPT_PLAN_TEMPLATE
-        .replace('{task}', task)
-        .replace('{tool_descriptions}', toolDescriptions)
-        .replace('{managed_agents_descriptions}', managedAgentsDescriptions)
-        .replace('{answer_facts}', answerFacts);
+        .replace(/\{task\}/g, task)
+        .replace(/\{tool_descriptions\}/g, toolDescriptions)
+        .replace(/\{managed_agents_descriptions\}/g, managedAgentsDescriptions)
+        .replace(/\{answer_facts\}/g, answerFacts);
 }
 
 /**
  * Get the system prompt plan update with the provided task
  */
 export function getSystemPromptPlanUpdate(task: string): string {
-    return SYSTEM_PROMPT_PLAN_UPDATE_TEMPLATE.replace('{task}', task);
+    return SYSTEM_PROMPT_PLAN_UPDATE_TEMPLATE
+        .replace(/\{task\}/g, task);
 }
 
 /**
@@ -239,11 +242,11 @@ export function getUserPromptPlanUpdate(
     remainingSteps: number
 ): string {
     return USER_PROMPT_PLAN_UPDATE_TEMPLATE
-        .replace('{task}', task)
-        .replace('{tool_descriptions}', toolDescriptions)
-        .replace('{managed_agents_descriptions}', managedAgentsDescriptions)
-        .replace('{facts_update}', factsUpdate)
-        .replace('{remaining_steps}', remainingSteps.toString());
+        .replace(/\{task\}/g, task)
+        .replace(/\{tool_descriptions\}/g, toolDescriptions)
+        .replace(/\{managed_agents_descriptions\}/g, managedAgentsDescriptions)
+        .replace(/\{facts_update\}/g, factsUpdate)
+        .replace(/\{remaining_steps\}/g, remainingSteps.toString());
 }
 
 /**
@@ -251,6 +254,6 @@ export function getUserPromptPlanUpdate(
  */
 export function getPlanUpdateFinalPlanRedaction(task: string, planUpdate: string): string {
     return PLAN_UPDATE_FINAL_PLAN_REDACTION_TEMPLATE
-        .replace('{task}', task)
-        .replace('{plan_update}', planUpdate);
+        .replace(/\{task\}/g, task)
+        .replace(/\{plan_update\}/g, planUpdate);
 }
