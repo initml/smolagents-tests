@@ -17,16 +17,13 @@
 import { Tool } from './tools';
 import { FinalAnswerTool, TOOL_MAPPING } from './default_tools';
 import { MessageRole, ChatMessage } from './models';
-import { 
-    CODE_SYSTEM_PROMPT,
-    MANAGED_AGENT_PROMPT,
-    PLAN_UPDATE_FINAL_PLAN_REDACTION,
-    SYSTEM_PROMPT_PLAN,
-    SYSTEM_PROMPT_PLAN_UPDATE,
-    TOOL_CALLING_SYSTEM_PROMPT,
-    USER_PROMPT_PLAN,
-    USER_PROMPT_PLAN_UPDATE,
-} from './prompts';
+import { getManagedAgentPrompt,
+    getPlanUpdateFinalPlanRedaction,
+    getSystemPromptPlan,
+    getSystemPromptPlanUpdate,
+    getToolCallingSystemPrompt,
+    getUserPromptPlan,
+    getUserPromptPlanUpdate } from './prompts';
 import { 
     DEFAULT_TOOL_DESCRIPTION_TEMPLATE,
     getToolDescriptionWithArgs
@@ -128,7 +125,7 @@ export abstract class MultiStepAgent {
             Object.assign(this.tools, TOOL_MAPPING);
         }
         this.model = model;
-        this.systemPrompt = systemPrompt || TOOL_CALLING_SYSTEM_PROMPT;
+        this.systemPrompt = systemPrompt || getToolCallingSystemPrompt(Object.keys(this.tools));
         this.toolDescriptionTemplate = toolDescriptionTemplate || DEFAULT_TOOL_DESCRIPTION_TEMPLATE;
         this.maxSteps = maxSteps;
         this.toolParser = toolParser;
@@ -241,15 +238,17 @@ export abstract class MultiStepAgent {
         const planMemory: ChatMessage[] = [
             {
                 role: MessageRole.SYSTEM,
-                content: SYSTEM_PROMPT_PLAN,
+                content: getSystemPromptPlan(),
             },
             ...agentMemory,
             {
                 role: MessageRole.USER,
-                content: USER_PROMPT_PLAN
-                    .replace('{task}', task)
-                    .replace('{tool_descriptions}', getToolDescriptions(this.tools, this.toolDescriptionTemplate))
-                    .replace('{answer_facts}', this.factsManager.formatFacts()),
+                content: getUserPromptPlan(
+                    task,
+                    getToolDescriptions(this.tools, this.toolDescriptionTemplate),
+                    '',  // managedAgentsDescriptions
+                    this.factsManager.formatFacts()
+                ),
             },
         ];
 
@@ -284,7 +283,6 @@ export class ToolCallingAgent extends MultiStepAgent {
         planningInterval?: number,
         options: Partial<{
             maxSteps: number;
-            verbosityLevel: number;
             grammar: Record<string, string>;
             monitor: any;
         }> = {}
@@ -292,7 +290,7 @@ export class ToolCallingAgent extends MultiStepAgent {
         super(
             tools,
             model,
-            systemPrompt || TOOL_CALLING_SYSTEM_PROMPT,
+            systemPrompt || getToolCallingSystemPrompt(tools.map(t => t.name)),
             undefined,
             options.maxSteps,
             undefined,

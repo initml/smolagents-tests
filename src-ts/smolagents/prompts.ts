@@ -1,5 +1,4 @@
-
-export const TOOL_CALLING_SYSTEM_PROMPT = `You are an expert assistant who can solve any task using tool calls. You will be given a task to solve as best you can.
+const TOOL_CALLING_SYSTEM_PROMPT_TEMPLATE = `You are an expert assistant who can solve any task using tool calls. You will be given a task to solve as best you can.
 To do so, you have been given access to the following tools: {{tool_names}}
 
 The tool call you write is an action: after the tool is executed, you will get the result of the tool call as an "observation".
@@ -101,7 +100,7 @@ Remember:
 Now Begin! If you solve the task correctly, you will receive a reward of $1,000,000.
 `;
 
-export const MANAGED_AGENT_PROMPT = `You're a helpful agent named '{name}'.
+const MANAGED_AGENT_PROMPT_TEMPLATE = `You're a helpful agent named '{name}'.
 You have been submitted this task by your manager.
 ---
 Task:
@@ -112,14 +111,14 @@ Task:
 
 Now begin! If you solve the task correctly, you will receive a reward of $1,000,000.`;
 
-export const SYSTEM_PROMPT_PLAN = `You are a world expert at making efficient plans to solve any task using a set of carefully crafted tools.
+const SYSTEM_PROMPT_PLAN_TEMPLATE = `You are a world expert at making efficient plans to solve any task using a set of carefully crafted tools.
 
 Now for the given task, develop a step-by-step high-level plan taking into account the above inputs and list of facts.
 This plan should involve individual tasks based on the available tools, that if executed correctly will yield the correct answer.
 Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.
 After writing the final step of the plan, write the '\n<end_plan>' tag and stop there.`;
 
-export const USER_PROMPT_PLAN = `
+const USER_PROMPT_PLAN_TEMPLATE = `
 Here is your task:
 
 Task:
@@ -139,7 +138,7 @@ List of facts that you know:
 
 Now begin! Write your plan below.`;
 
-export const SYSTEM_PROMPT_PLAN_UPDATE = `You are a world expert at making efficient plans to solve any task using a set of carefully crafted tools.
+const SYSTEM_PROMPT_PLAN_UPDATE_TEMPLATE = `You are a world expert at making efficient plans to solve any task using a set of carefully crafted tools.
 
 You have been given a task:
 \`\`\`
@@ -150,7 +149,7 @@ Find below the record of what has been tried so far to solve it. Then you will b
 If the previous tries so far have met some success, you can make an updated plan based on these actions.
 If you are stalled, you can make a completely new plan starting from scratch.`;
 
-export const USER_PROMPT_PLAN_UPDATE = `You're still working towards solving this task:
+const USER_PROMPT_PLAN_UPDATE_TEMPLATE = `You're still working towards solving this task:
 \`\`\`
 {task}
 \`\`\`
@@ -173,7 +172,7 @@ After writing the final step of the plan, write the '\n<end_plan>' tag and stop 
 
 Now write your new plan below.`;
 
-export const PLAN_UPDATE_FINAL_PLAN_REDACTION = `I still need to solve the task I was given:
+const PLAN_UPDATE_FINAL_PLAN_REDACTION_TEMPLATE = `I still need to solve the task I was given:
 \`\`\`
 {task}
 \`\`\`
@@ -182,3 +181,76 @@ Here is my new/updated plan of action to solve the task:
 \`\`\`
 {plan_update}
 \`\`\``;
+
+/**
+ * Get the tool calling system prompt with the provided tool names and descriptions
+ */
+export function getToolCallingSystemPrompt(toolNames: string[]): string {
+    return TOOL_CALLING_SYSTEM_PROMPT_TEMPLATE.replace('{tool_names}', toolNames.join(', '));
+}
+
+/**
+ * Get the managed agent prompt with the provided name and task
+ */
+export function getManagedAgentPrompt(name: string, task: string): string {
+    return MANAGED_AGENT_PROMPT_TEMPLATE
+        .replace('{name}', name)
+        .replace('{task}', task);
+}
+
+/**
+ * Get the system prompt plan
+ */
+export function getSystemPromptPlan(): string {
+    return SYSTEM_PROMPT_PLAN_TEMPLATE;
+}
+
+/**
+ * Get the user prompt plan with the provided task, tool descriptions, managed agents descriptions, and answer facts
+ */
+export function getUserPromptPlan(
+    task: string, 
+    toolDescriptions: string, 
+    managedAgentsDescriptions: string, 
+    answerFacts: string
+): string {
+    return USER_PROMPT_PLAN_TEMPLATE
+        .replace('{task}', task)
+        .replace('{tool_descriptions}', toolDescriptions)
+        .replace('{managed_agents_descriptions}', managedAgentsDescriptions)
+        .replace('{answer_facts}', answerFacts);
+}
+
+/**
+ * Get the system prompt plan update with the provided task
+ */
+export function getSystemPromptPlanUpdate(task: string): string {
+    return SYSTEM_PROMPT_PLAN_UPDATE_TEMPLATE.replace('{task}', task);
+}
+
+/**
+ * Get the user prompt plan update with the provided task, tool descriptions, managed agents descriptions, facts update, and remaining steps
+ */
+export function getUserPromptPlanUpdate(
+    task: string, 
+    toolDescriptions: string, 
+    managedAgentsDescriptions: string, 
+    factsUpdate: string, 
+    remainingSteps: number
+): string {
+    return USER_PROMPT_PLAN_UPDATE_TEMPLATE
+        .replace('{task}', task)
+        .replace('{tool_descriptions}', toolDescriptions)
+        .replace('{managed_agents_descriptions}', managedAgentsDescriptions)
+        .replace('{facts_update}', factsUpdate)
+        .replace('{remaining_steps}', remainingSteps.toString());
+}
+
+/**
+ * Get the plan update final plan redaction with the provided task and plan update
+ */
+export function getPlanUpdateFinalPlanRedaction(task: string, planUpdate: string): string {
+    return PLAN_UPDATE_FINAL_PLAN_REDACTION_TEMPLATE
+        .replace('{task}', task)
+        .replace('{plan_update}', planUpdate);
+}
