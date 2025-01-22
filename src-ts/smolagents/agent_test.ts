@@ -56,16 +56,20 @@ export class Multipy extends Tool {
     }
 }
 
+const tools = [new WeatherTool(), new Multipy()];
 
 const model = new OpenAIServerModel(
     'gpt-4',
     'https://api.openai.com/v1',
-    process.env.OPENAI_API_KEY || ''
+    process.env.OPENAI_API_KEY || '',
+    0.7, 
+    tools, 
+    {}
 );
 
 const agent = new ToolCallingAgent(
-    [new WeatherTool(), new Multipy()], // tools
-    model.toModelFunction(), // model
+    tools, 
+    model.toModelFunction(), 
 );
 
 async function main() {

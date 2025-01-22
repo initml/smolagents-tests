@@ -75,6 +75,7 @@ export class OpenAIServerModel extends Model {
     private modelId: string;
     private client: OpenAI;
     private temperature: number;
+    private toolsToCallFrom: Tool[];
     private kwargs: Record<string, any>;
 
     constructor(
@@ -82,6 +83,7 @@ export class OpenAIServerModel extends Model {
         apiBase: string,
         apiKey: string,
         temperature: number = 0.7,
+        toolsToCallFrom: Tool[] = [],
         kwargs: Record<string, any> = {}
     ) {
         super();
@@ -91,6 +93,7 @@ export class OpenAIServerModel extends Model {
             apiKey: apiKey,
         });
         this.temperature = temperature;
+        this.toolsToCallFrom = toolsToCallFrom;
         this.kwargs = kwargs;
         this.logger = AgentLogger.getInstance({ source: 'OpenAIServerModel', level: LOG_LEVEL });
         this.logger.log(`Initialized OpenAI model ${modelId} with temperature ${temperature}`, { level: LogLevel.INFO });
@@ -101,11 +104,27 @@ export class OpenAIServerModel extends Model {
         stopSequences?: string[],
         grammar?: string,
         maxTokens: number = 1500,
-        toolsToCallFrom?: Tool[]
     ): Promise<ChatMessage> {
         this.logger.log(`Calling OpenAI model with ${messages.length} messages`, { level: LogLevel.INFO });
-        if (toolsToCallFrom) {
-            this.logger.log(`Using ${toolsToCallFrom.length} tools: ${toolsToCallFrom.map(t => t.name).join(', ')}`, { level: LogLevel.DEBUG });
+        if (this.toolsToCallFrom) {
+            this.logger.log(`Using ${this.toolsToCallFrom.length} tools: ${this.toolsToCallFrom.map(t => t.name).join(', ')}`, { level: LogLevel.DEBUG });
+        } else {
+            this.logger.log('No tools provided', { level: LogLevel.DEBUG });
+        }
+        if (stopSequences) {
+            this.logger.log(`Using stop sequences: ${stopSequences.join(', ')}`, { level: LogLevel.DEBUG });
+        } else {
+            this.logger.log('No stop sequences provided', { level: LogLevel.DEBUG });
+        }
+        if (grammar) {
+            this.logger.log(`Using grammar: ${grammar}`, { level: LogLevel.DEBUG });
+        } else {
+            this.logger.log('No grammar provided', { level: LogLevel.DEBUG });
+        }
+        if (maxTokens) {
+            this.logger.log(`Using max tokens: ${maxTokens}`, { level: LogLevel.DEBUG });
+        } else {
+            this.logger.log('No max tokens provided', { level: LogLevel.DEBUG });
         }
         
         const cleanMessages = getCleanMessageList(messages, toolRoleConversions);
@@ -121,11 +140,11 @@ export class OpenAIServerModel extends Model {
         };
 
         try {
-            if (toolsToCallFrom) {
+            if (this.toolsToCallFrom) {  
                 this.logger.log('Making API call with tool definitions', { level: LogLevel.DEBUG });
                 const response = await this.client.chat.completions.create({
                     ...baseParams,
-                    tools: toolsToCallFrom.map(tool => ({
+                    tools: this.toolsToCallFrom.map(tool => ({
                         type: 'function',
                         function: {
                             name: tool.name,
