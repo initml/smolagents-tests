@@ -114,7 +114,6 @@ export abstract class MultiStepAgent {
         maxSteps: number = 6,
         toolParser?: (output: string) => any,
         addBaseTools: boolean = false,
-        verbosityLevel: number = 1,
         grammar?: Record<string, string>,
         planningInterval?: number,
         monitor?: any,
@@ -295,12 +294,17 @@ export class ToolCallingAgent extends MultiStepAgent {
             options.maxSteps,
             undefined,
             false,
-            LOG_LEVEL,  // Use LOG_LEVEL instead of options.verbosityLevel
             options.grammar,
             planningInterval,
             options.monitor,
             new FactsManager() // Initialize FactsManager
         );
+        this.logger = AgentLogger.getInstance({ source: 'ToolCallingAgent', level: LOG_LEVEL });
+        this.logger.log('ToolCallingAgent initialized with:', { level: LogLevel.DEBUG });
+        this.logger.log('- Tools:', Object.keys(this.tools), { level: LogLevel.DEBUG });
+        this.logger.log('- Max steps:', options.maxSteps || 6, { level: LogLevel.DEBUG });
+        this.logger.log('- Grammar:', options.grammar, { level: LogLevel.DEBUG });
+        this.logger.log('- Planning interval:', planningInterval, { level: LogLevel.DEBUG });
     }
 
     protected async step(logEntry: ActionStep): Promise<any | null> {
