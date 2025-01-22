@@ -30,13 +30,13 @@ export class WeatherTool extends Tool {
 
 export class Multipy extends Tool {
     public override name = 'multiplicator';
-    public override description = 'make the product of two numbers';
+    public override description = 'make the product of two numbers: Result = number_one * number_two';
     public override inputs = {
-        a: {
+        number_one: {
             type: 'number' as AuthorizedType,
             description: 'The first number to multiply'
        },
-        b: {
+       number_two: {
             type: 'number' as AuthorizedType,
             description: 'The second number to multiply'
         }
@@ -48,8 +48,11 @@ export class Multipy extends Tool {
     }
 
     protected override async forward(args: Record<string, any>): Promise<number> {
-        const { a, b } = args;
-        return a * b;
+        console.log("args", args);
+        const { number_one, number_two } = args;
+        console.log("number_one, number_two", number_one, number_two);
+        console.log("types:", typeof number_one, typeof number_two);
+        return number_one * number_two;
     }
 }
 
