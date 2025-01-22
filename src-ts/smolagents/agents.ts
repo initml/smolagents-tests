@@ -75,7 +75,7 @@ export class SystemPromptStep {
     constructor(public systemPrompt: string) {}
 }
 
-export abstract class MultiStepAgent {
+export class ToolCallingAgent {
     protected tools: Record<string, Tool>;
     protected model: (messages: ChatMessage[]) => Promise<string>;
     protected systemPrompt: string;
@@ -94,50 +94,52 @@ export abstract class MultiStepAgent {
         tools: Tool[],
         model: (messages: ChatMessage[]) => Promise<string>,
         systemPrompt?: string,
-        toolDescriptionTemplate?: string,
-        maxSteps: number = 6,
-        toolParser?: (output: string) => any,
-        addBaseTools: boolean = false,
-        grammar?: Record<string, string>,
         planningInterval?: number,
-        monitor?: any,
-        factsManager?: FactsManager
+        options: Partial<{
+            maxSteps: number;
+            grammar: Record<string, string>;
+            monitor: any;
+        }> = {}
     ) {
         this.tools = Object.fromEntries(tools.map(tool => [tool.name, tool]));
-        if (addBaseTools) {
-            // Instantiate the base tools
-            const baseTools = Object.fromEntries(
-                Object.entries(TOOL_MAPPING).map(([name, ToolClass]) => [name, new (ToolClass as new () => Tool)()])
-            );
-            Object.assign(this.tools, baseTools);
-        }
+        // Instantiate the base tools
+        const baseTools = Object.fromEntries(
+            Object.entries(TOOL_MAPPING).map(([name, ToolClass]) => [name, new (ToolClass as new () => Tool)()])
+        );
+        Object.assign(this.tools, baseTools);
+        
         this.model = model;
-        this.systemPrompt = systemPrompt || getToolCallingSystemPrompt(Object.keys(this.tools));
-        this.toolDescriptionTemplate = toolDescriptionTemplate || DEFAULT_TOOL_DESCRIPTION_TEMPLATE;
-        this.maxSteps = maxSteps;
-        this.toolParser = toolParser;
-        this.logger = AgentLogger.getInstance({ source: 'MultiStepAgent', level: LOG_LEVEL });
-        this.grammar = grammar;
+        this.systemPrompt = systemPrompt || getToolCallingSystemPrompt(tools.map(t => t.name));
+        this.toolDescriptionTemplate = DEFAULT_TOOL_DESCRIPTION_TEMPLATE;
+        this.maxSteps = options.maxSteps || 6;
+        this.toolParser = undefined;
+        this.logger = AgentLogger.getInstance({ source: 'ToolCallingAgent', level: LOG_LEVEL });
+        this.grammar = options.grammar;
         this.planningInterval = planningInterval;
-        this.monitor = monitor;
-        this.factsManager = factsManager || new FactsManager();
+        this.monitor = options.monitor;
+        this.factsManager = new FactsManager();
 
-        this.logger.log('MultiStepAgent initialized with:', { level: LogLevel.DEBUG });
+        this.logger.log('ToolCallingAgent initialized with:', { level: LogLevel.DEBUG });
         this.logger.log('- Tools:', Object.keys(this.tools), { level: LogLevel.INFO });
         this.logger.log('- Max steps:', this.maxSteps, { level: LogLevel.DEBUG });
         this.logger.log('- Grammar:', this.grammar, { level: LogLevel.DEBUG });
-        this.logger.log('- Planning interval:', this.planningInterval, { level: LogLevel.DEBUG });
+        this.logger.log('- Planning interval:', planningInterval, { level: LogLevel.DEBUG });
     }
 
     protected async step(logEntry: ActionStep): Promise<any | null> {
+        this.logger.log(`Starting step ${logEntry.step}`, { level: LogLevel.INFO });
+        
         const output = await this.model(logEntry.agentMemory || []);
+        this.logger.log('Model output:', output, { level: LogLevel.DEBUG });
         logEntry.llmOutput = output;
 
         let toolCall: ToolCall;
         try {
             const [name, args] = parseJsonToolCall(output);
             toolCall = { name, arguments: args };
+            this.logger.log('Parsed tool call:', { name, arguments: args }, { level: LogLevel.DEBUG });
         } catch (error) {
+            this.logger.log('Failed to parse tool call:', error, { level: LogLevel.ERROR });
             throw new AgentParsingError(`Failed to parse tool call: ${error}`);
         }
 
@@ -145,6 +147,8 @@ export abstract class MultiStepAgent {
 
         const tool = this.tools[toolCall.name];
         if (!tool) {
+            this.logger.log(`Unknown tool: ${toolCall.name}`, { level: LogLevel.ERROR });
+            this.logger.log('Available tools:', Object.keys(this.tools), { level: LogLevel.ERROR });
             throw new AgentParsingError(`Unknown tool: ${toolCall.name}`);
         }
 
@@ -162,6 +166,8 @@ export abstract class MultiStepAgent {
             }
 
             const observation = await tool.call(toolCall.arguments);
+            this.logger.log('Tool observation:', observation, { level: LogLevel.INFO });
+            
             logEntry.observations = observation;
             logEntry.agentMemory?.push({
                 role: MessageRole.ASSISTANT,
@@ -171,8 +177,10 @@ export abstract class MultiStepAgent {
                 role: MessageRole.USER,
                 content: String(observation),
             });
+            this.logger.log('Updated agent memory', logEntry.agentMemory, { level: LogLevel.DEBUG, id: "log_memory" });
             return null;
         } else {
+            this.logger.log(`Invalid tool type for: ${toolCall.name}`, { level: LogLevel.ERROR });
             throw new AgentParsingError(`Invalid tool type for: ${toolCall.name}`);
         }
     }
@@ -280,99 +288,6 @@ export abstract class MultiStepAgent {
         }
 
         return memory;
-    }
-}
-
-export class ToolCallingAgent extends MultiStepAgent {
-    constructor(
-        tools: Tool[],
-        model: (messages: ChatMessage[]) => Promise<string>,
-        systemPrompt?: string,
-        planningInterval?: number,
-        options: Partial<{
-            maxSteps: number;
-            grammar: Record<string, string>;
-            monitor: any;
-        }> = {}
-    ) {
-        super(
-            tools,
-            model,
-            systemPrompt || getToolCallingSystemPrompt(tools.map(t => t.name)),
-            undefined,
-            options.maxSteps,
-            undefined,
-            true,  // Enable base tools to get access to finalAnswer
-            options.grammar,
-            planningInterval,
-            options.monitor,
-            new FactsManager() // Initialize FactsManager
-        );
-        this.logger = AgentLogger.getInstance({ source: 'ToolCallingAgent', level: LOG_LEVEL });
-        this.logger.log('ToolCallingAgent initialized with:', { level: LogLevel.DEBUG });
-        this.logger.log('- Tools:', Object.keys(this.tools), { level: LogLevel.DEBUG });
-        this.logger.log('- Max steps:', options.maxSteps || 6, { level: LogLevel.DEBUG });
-        this.logger.log('- Grammar:', options.grammar, { level: LogLevel.DEBUG });
-        this.logger.log('- Planning interval:', planningInterval, { level: LogLevel.DEBUG });
-    }
-
-    protected async step(logEntry: ActionStep): Promise<any | null> {
-        this.logger.log(`Starting step ${logEntry.step}`, { level: LogLevel.INFO });
-        
-        const output = await this.model(logEntry.agentMemory || []);
-        this.logger.log('Model output:', output, { level: LogLevel.DEBUG });
-        logEntry.llmOutput = output;
-
-        let toolCall: ToolCall;
-        try {
-            const [name, args] = parseJsonToolCall(output);
-            toolCall = { name, arguments: args };
-            this.logger.log('Parsed tool call:', { name, arguments: args }, { level: LogLevel.DEBUG });
-        } catch (error) {
-            this.logger.log('Failed to parse tool call:', error, { level: LogLevel.ERROR });
-            throw new AgentParsingError(`Failed to parse tool call: ${error}`);
-        }
-
-        logEntry.toolCalls = [toolCall];
-
-        const tool = this.tools[toolCall.name];
-        if (!tool) {
-            this.logger.log(`Unknown tool: ${toolCall.name}`, { level: LogLevel.ERROR });
-            this.logger.log('Available tools:', Object.keys(this.tools), { level: LogLevel.ERROR });
-            throw new AgentParsingError(`Unknown tool: ${toolCall.name}`);
-        }
-
-        if (tool instanceof Tool) {
-            this.logger.log(`Executing tool: ${toolCall.name}`, toolCall.arguments, { level: LogLevel.INFO });
-
-            // Handle final answer
-            if (toolCall.name === 'finalAnswer') {
-                let finalAnswer = toolCall.arguments;
-                if (typeof finalAnswer === 'object' && 'answer' in finalAnswer) {
-                    finalAnswer = finalAnswer.answer;
-                }
-                this.logger.log('Final answer:', finalAnswer, { level: LogLevel.INFO });
-                return finalAnswer;
-            }
-
-            const observation = await tool.call(toolCall.arguments);
-            this.logger.log('Tool observation:', observation, { level: LogLevel.INFO });
-            
-            logEntry.observations = observation;
-            logEntry.agentMemory?.push({
-                role: MessageRole.ASSISTANT,
-                content: output,
-            });
-            logEntry.agentMemory?.push({
-                role: MessageRole.USER,
-                content: String(observation),
-            });
-            this.logger.log('Updated agent memory', logEntry.agentMemory, { level: LogLevel.DEBUG, id: "log_memory" });
-            return null;
-        } else {
-            this.logger.log(`Invalid tool type for: ${toolCall.name}`, { level: LogLevel.ERROR });
-            throw new AgentParsingError(`Invalid tool type for: ${toolCall.name}`);
-        }
     }
 }
 
