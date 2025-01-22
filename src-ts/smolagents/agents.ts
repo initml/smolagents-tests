@@ -44,6 +44,8 @@ import {
 import { FactsManager } from './facts';
 import { LogLevel, AgentLogger } from './logger';
 
+const LOG_LEVEL = LogLevel.DEBUG;  // Set default log level for this file
+
 export interface ToolCall {
     name: string;
     arguments: any;
@@ -130,7 +132,7 @@ export abstract class MultiStepAgent {
         this.toolDescriptionTemplate = toolDescriptionTemplate || DEFAULT_TOOL_DESCRIPTION_TEMPLATE;
         this.maxSteps = maxSteps;
         this.toolParser = toolParser;
-        this.logger = AgentLogger.getInstance({ source: 'MultiStepAgent', level: verbosityLevel as LogLevel });
+        this.logger = AgentLogger.getInstance({ source: 'MultiStepAgent', level: LOG_LEVEL });
         this.grammar = grammar;
         this.planningInterval = planningInterval;
         this.monitor = monitor;
@@ -295,7 +297,7 @@ export class ToolCallingAgent extends MultiStepAgent {
             options.maxSteps,
             undefined,
             false,
-            options.verbosityLevel,
+            LOG_LEVEL,  // Use LOG_LEVEL instead of options.verbosityLevel
             options.grammar,
             planningInterval,
             options.monitor,

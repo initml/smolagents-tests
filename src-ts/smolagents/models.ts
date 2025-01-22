@@ -1,5 +1,8 @@
 import { Tool } from './tools';
 import OpenAI from 'openai';
+import { LogLevel, AgentLogger } from './logger';
+
+const LOG_LEVEL = LogLevel.DEBUG;  // Set default log level for this file
 
 export enum MessageRole {
     USER = 'user',
@@ -50,6 +53,11 @@ export function getCleanMessageList(
 export abstract class Model {
     protected lastInputTokenCount: number = 0;
     protected lastOutputTokenCount: number = 0;
+    protected logger: AgentLogger;
+
+    constructor() {
+        this.logger = AgentLogger.getInstance({ source: 'Model', level: LOG_LEVEL });
+    }
 
     abstract call(
         messages: ChatMessage[],
@@ -84,6 +92,8 @@ export class OpenAIServerModel extends Model {
         });
         this.temperature = temperature;
         this.kwargs = kwargs;
+        this.logger = AgentLogger.getInstance({ source: 'OpenAIServerModel', level: LOG_LEVEL });
+        this.logger.log(`Initialized OpenAI model ${modelId} with temperature ${temperature}`, { level: LogLevel.INFO });
     }
 
     async call(
@@ -93,7 +103,13 @@ export class OpenAIServerModel extends Model {
         maxTokens: number = 1500,
         toolsToCallFrom?: Tool[]
     ): Promise<ChatMessage> {
+        this.logger.log(`Calling OpenAI model with ${messages.length} messages`, { level: LogLevel.DEBUG });
+        if (toolsToCallFrom) {
+            this.logger.log(`Using ${toolsToCallFrom.length} tools: ${toolsToCallFrom.map(t => t.name).join(', ')}`, { level: LogLevel.DEBUG });
+        }
+        
         const cleanMessages = getCleanMessageList(messages, toolRoleConversions);
+        this.logger.log(`Cleaned messages for OpenAI format`, { level: LogLevel.DEBUG });
 
         const baseParams: OpenAI.Chat.ChatCompletionCreateParams = {
             model: this.modelId,
@@ -104,30 +120,46 @@ export class OpenAIServerModel extends Model {
             ...this.kwargs,
         };
 
-        if (toolsToCallFrom) {
-            const response = await this.client.chat.completions.create({
-                ...baseParams,
-                tools: toolsToCallFrom.map(tool => ({
-                    type: 'function',
-                    function: {
-                        name: tool.name,
-                        description: tool.description,
-                        parameters: getJsonSchema(tool)
-                    }
-                }))
-            });
-            return response.choices[0].message as ChatMessage;
-        } else {
-            const response = await this.client.chat.completions.create(baseParams);
-            return response.choices[0].message as ChatMessage;
+        try {
+            if (toolsToCallFrom) {
+                this.logger.log('Making API call with tool definitions', { level: LogLevel.DEBUG });
+                const response = await this.client.chat.completions.create({
+                    ...baseParams,
+                    tools: toolsToCallFrom.map(tool => ({
+                        type: 'function',
+                        function: {
+                            name: tool.name,
+                            description: tool.description,
+                            parameters: getJsonSchema(tool)
+                        }
+                    }))
+                });
+                this.logger.log('Successfully received response with tools', { level: LogLevel.DEBUG });
+                return response.choices[0].message as ChatMessage;
+            } else {
+                this.logger.log('Making API call without tools', { level: LogLevel.DEBUG });
+                const response = await this.client.chat.completions.create(baseParams);
+                this.logger.log('Successfully received response', { level: LogLevel.DEBUG });
+                return response.choices[0].message as ChatMessage;
+            }
+        } catch (error) {
+            const errorMsg = `OpenAI API call failed: ${error}`;
+            this.logger.log(errorMsg, { level: LogLevel.ERROR });
+            throw new Error(errorMsg);
         }
     }
 
-    // Adapter function to convert OpenAIServerModel to agent-compatible function
     toModelFunction(): (messages: ChatMessage[]) => Promise<string> {
+        this.logger.log('Converting OpenAIServerModel to model function', { level: LogLevel.DEBUG });
         return async (messages: ChatMessage[]): Promise<string> => {
-            const response = await this.call(messages);
-            return response.content || '';
+            try {
+                const response = await this.call(messages);
+                return response.content || '';
+            } catch (error) {
+                const errorMsg = `Model function call failed: ${error}`;
+                this.logger.log(errorMsg, { level: LogLevel.ERROR });
+                throw new Error(errorMsg);
+            }
         };
     }
 }
@@ -138,7 +170,10 @@ export const DEFAULT_JSONAGENT_REGEX_GRAMMAR = {
 };
 
 function getJsonSchema(tool: Tool): Record<string, any> {
-    return {
+    const logger = AgentLogger.getInstance({ source: 'ModelUtils', level: LOG_LEVEL });
+    logger.log(`Generating JSON schema for tool: ${tool.name}`, { level: LogLevel.DEBUG });
+    
+    const schema = {
         type: 'object',
         properties: Object.fromEntries(
             Object.entries(tool.inputs).map(([name, input]) => [
@@ -153,6 +188,9 @@ function getJsonSchema(tool: Tool): Record<string, any> {
             .filter(([_, input]) => !input.optional)
             .map(([name, _]) => name)
     };
+    
+    logger.log(`Generated schema with ${Object.keys(schema.properties).length} properties`, { level: LogLevel.DEBUG });
+    return schema;
 }
 
 function removeStopSequences(content: string, stopSequences: string[]): string {

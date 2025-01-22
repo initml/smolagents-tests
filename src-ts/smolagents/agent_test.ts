@@ -39,11 +39,6 @@ const model = new OpenAIServerModel(
 const agent = new ToolCallingAgent(
     [weatherTool], // tools
     model.toModelFunction(), // model
-    undefined, // systemPrompt
-    undefined, // planningInterval
-    {
-        verbosityLevel: 2  // Set to DEBUG level
-    }
 );
 
 async function main() {
