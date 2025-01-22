@@ -121,7 +121,11 @@ export abstract class MultiStepAgent {
     ) {
         this.tools = Object.fromEntries(tools.map(tool => [tool.name, tool]));
         if (addBaseTools) {
-            Object.assign(this.tools, TOOL_MAPPING);
+            // Instantiate the base tools
+            const baseTools = Object.fromEntries(
+                Object.entries(TOOL_MAPPING).map(([name, ToolClass]) => [name, new (ToolClass as new () => Tool)()])
+            );
+            Object.assign(this.tools, baseTools);
         }
         this.model = model;
         this.systemPrompt = systemPrompt || getToolCallingSystemPrompt(Object.keys(this.tools));
@@ -293,7 +297,7 @@ export class ToolCallingAgent extends MultiStepAgent {
             undefined,
             options.maxSteps,
             undefined,
-            false,
+            true,  // Enable base tools to get access to finalAnswer
             options.grammar,
             planningInterval,
             options.monitor,
@@ -347,7 +351,7 @@ export class ToolCallingAgent extends MultiStepAgent {
                 role: MessageRole.USER,
                 content: String(observation),
             });
-            this.logger.log('Updated agent memory', logEntry.agentMemory, { level: LogLevel.DEBUG });
+            this.logger.log('Updated agent memory', logEntry.agentMemory, { level: LogLevel.DEBUG, id: "log_memory" });
             return null;
         } else {
             this.logger.log(`Invalid tool type for: ${toolCall.name}`, { level: LogLevel.ERROR });

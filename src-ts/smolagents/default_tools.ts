@@ -225,8 +225,7 @@ export class VisitWebpageTool extends Tool {
     }
 }
 
-export const TOOL_MAPPING: Record<string, typeof Tool> = {
-    javascriptInterpreter: JavaScriptInterpreterTool,
+export const TOOL_MAPPING: Record<string, new () => Tool> = {
     finalAnswer: FinalAnswerTool,
     userInput: UserInputTool,
     webSearch: DuckDuckGoSearchTool,
