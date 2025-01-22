@@ -98,7 +98,10 @@ export enum LogLevel {
 }
 
 export class AgentLogger {
-    constructor(public level: LogLevel = LogLevel.INFO) {}
+    constructor(public level: LogLevel = LogLevel.INFO) {
+        console.log(
+            `Agent logger initialized with level ${LogLevel[this.level]}.`);
+    }
 
     log(...args: any[]): void {
         if (args[args.length - 1]?.level <= this.level) {
@@ -150,6 +153,12 @@ export abstract class MultiStepAgent {
         this.planningInterval = planningInterval;
         this.monitor = monitor;
         this.factsManager = factsManager || new FactsManager();
+
+        this.logger.log('MultiStepAgent initialized with:', { level: LogLevel.DEBUG });
+        this.logger.log('- Tools:', Object.keys(this.tools), { level: LogLevel.DEBUG });
+        this.logger.log('- Max steps:', this.maxSteps, { level: LogLevel.DEBUG });
+        this.logger.log('- Grammar:', this.grammar, { level: LogLevel.DEBUG });
+        this.logger.log('- Planning interval:', this.planningInterval, { level: LogLevel.DEBUG });
     }
 
     protected async step(logEntry: ActionStep): Promise<any | null> {
@@ -189,6 +198,7 @@ export abstract class MultiStepAgent {
     }
 
     public async run(task: string): Promise<any> {
+        this.logger.log(`Starting task: ${task}`, { level: LogLevel.INFO });
         const memory: ChatMessage[] = [
             { role: MessageRole.SYSTEM, content: this.systemPrompt }
         ];
@@ -214,8 +224,10 @@ export abstract class MultiStepAgent {
             });
 
             try {
+                this.logger.log(`Step ${logEntry.step}: Processing...`, { level: LogLevel.DEBUG });
                 const result = await this.step(logEntry);
                 if (result !== null) {
+                    this.logger.log(`Task completed with result:`, result, { level: LogLevel.INFO });
                     return result;
                 }
             } catch (error) {
@@ -308,14 +320,19 @@ export class ToolCallingAgent extends MultiStepAgent {
     }
 
     protected async step(logEntry: ActionStep): Promise<any | null> {
+        this.logger.log(`Starting step ${logEntry.step}`, { level: LogLevel.DEBUG });
+        
         const output = await this.model(logEntry.agentMemory || []);
+        this.logger.log('Model output:', output, { level: LogLevel.DEBUG });
         logEntry.llmOutput = output;
 
         let toolCall: ToolCall;
         try {
             const [name, args] = parseJsonToolCall(output);
             toolCall = { name, arguments: args };
+            this.logger.log('Parsed tool call:', { name, arguments: args }, { level: LogLevel.DEBUG });
         } catch (error) {
+            this.logger.log('Failed to parse tool call:', error, { level: LogLevel.ERROR });
             throw new AgentParsingError(`Failed to parse tool call: ${error}`);
         }
 
@@ -323,11 +340,16 @@ export class ToolCallingAgent extends MultiStepAgent {
 
         const tool = this.tools[toolCall.name];
         if (!tool) {
+            this.logger.log(`Unknown tool: ${toolCall.name}`, { level: LogLevel.ERROR });
+            this.logger.log('Available tools:', Object.keys(this.tools), { level: LogLevel.ERROR });
             throw new AgentParsingError(`Unknown tool: ${toolCall.name}`);
         }
 
         if (tool instanceof Tool) {
+            this.logger.log(`Executing tool: ${toolCall.name}`, toolCall.arguments, { level: LogLevel.DEBUG });
             const observation = await tool.call(toolCall.arguments);
+            this.logger.log('Tool observation:', observation, { level: LogLevel.DEBUG });
+            
             logEntry.observations = observation;
             logEntry.agentMemory?.push({
                 role: MessageRole.ASSISTANT,
@@ -337,8 +359,10 @@ export class ToolCallingAgent extends MultiStepAgent {
                 role: MessageRole.USER,
                 content: String(observation),
             });
+            this.logger.log('Updated agent memory', logEntry.agentMemory, { level: LogLevel.DEBUG });
             return null;
         } else {
+            this.logger.log(`Invalid tool type for: ${toolCall.name}`, { level: LogLevel.ERROR });
             throw new AgentParsingError(`Invalid tool type for: ${toolCall.name}`);
         }
     }
