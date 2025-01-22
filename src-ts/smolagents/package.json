@@ -5,8 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/agent_test.js",
-    "dev": "ts-node-dev --respawn --transpile-only agent_test.ts",
+    "start": "node --no-deprecation dist/agent_test.js",
+    "dev": "ts-node-dev --no-deprecation --respawn --transpile-only agent_test.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {
