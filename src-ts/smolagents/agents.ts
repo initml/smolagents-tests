@@ -177,7 +177,7 @@ export class ToolCallingAgent {
                 role: MessageRole.USER,
                 content: String(observation),
             });
-            this.logger.log('Updated agent memory', logEntry.agentMemory, { level: LogLevel.DEBUG, id: "log_memory" });
+            this.logger.log('Updated agent memory', logEntry.agentMemory?.toString(), { level: LogLevel.DEBUG, id: "log_memory" });
             return null;
         } else {
             this.logger.log(`Invalid tool type for: ${toolCall.name}`, { level: LogLevel.ERROR });
