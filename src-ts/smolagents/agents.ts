@@ -183,7 +183,7 @@ export abstract class MultiStepAgent {
         const memory: ChatMessage[] = [
             { role: MessageRole.SYSTEM, content: this.systemPrompt } 
         ];
-        this.logger.log(`Initial memory: ${JSON.stringify(memory)}`, { level: LogLevel.DEBUG }); 
+        this.logger.log(`Memory: ${JSON.stringify(memory)}`, { level: LogLevel.DEBUG, id: "memory" }); 
         if (this.planningInterval) {
             this.logger.log('do planning', { level: LogLevel.DEBUG });
             const planningStep = await this.plan(task);
@@ -197,7 +197,7 @@ export abstract class MultiStepAgent {
             this.logger.log('no planning', { level: LogLevel.DEBUG });
             memory.push({ role: MessageRole.USER, content: task });
         }
-        this.logger.log(`Memory: ${JSON.stringify(memory)}`, { level: LogLevel.DEBUG }); 
+        this.logger.log(`Memory: ${JSON.stringify(memory)}`, { level: LogLevel.DEBUG, id: "memory" }); 
         let step = 0;
         while (step < this.maxSteps) {
             const logEntry = new ActionStep({

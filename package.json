@@ -1,5 +1,9 @@
 {
   "dependencies": {
-    "@e2b/cli": "^1.0.9"
+    "@e2b/cli": "^1.0.9",
+    "diff": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.0"
   }
 }
