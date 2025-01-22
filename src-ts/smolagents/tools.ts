@@ -83,7 +83,7 @@ export abstract class Tool implements ToolConfig {
      * Handles initialization and forwards the call to the actual implementation.
      */
     public async call(...args: any[]): Promise<any> {
-        this.logger.log(`Calling tool ${this.name} with args: ${JSON.stringify(args)}`, { level: LogLevel.DEBUG });
+        this.logger.log(`Calling tool ${this.name} with args: ${JSON.stringify(args)}`, { level: LogLevel.INFO });
         
         if (!this.isInitialized) {
             this.logger.log(`Initializing tool ${this.name}`, { level: LogLevel.DEBUG });

@@ -103,7 +103,7 @@ export class OpenAIServerModel extends Model {
         maxTokens: number = 1500,
         toolsToCallFrom?: Tool[]
     ): Promise<ChatMessage> {
-        this.logger.log(`Calling OpenAI model with ${messages.length} messages`, { level: LogLevel.DEBUG });
+        this.logger.log(`Calling OpenAI model with ${messages.length} messages`, { level: LogLevel.INFO });
         if (toolsToCallFrom) {
             this.logger.log(`Using ${toolsToCallFrom.length} tools: ${toolsToCallFrom.map(t => t.name).join(', ')}`, { level: LogLevel.DEBUG });
         }
