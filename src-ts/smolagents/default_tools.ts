@@ -15,8 +15,6 @@
  */
 
 import { Tool } from './tools';
-import { evaluateJavaScriptCode } from './local_js_executor';
-import { BASE_JS_TOOLS } from './local_js_executor';
 import { AuthorizedType } from './tools';
 import fetch from 'node-fetch';
 import * as readline from 'readline';
@@ -31,41 +29,6 @@ interface PreTool {
     task: string;
     description: string;
     repoId: string;
-}
-
-
-export class JavaScriptInterpreterTool extends Tool {
-    name = 'javascript_interpreter';
-    description = 'This is a tool that evaluates JavaScript code. It can be used to perform calculations.';
-    inputs = {
-        code: {
-            type: 'string' as const,
-            description: 'The JavaScript code to run in interpreter',
-        },
-    };
-    outputType = 'string' as const;
-
-    private baseJsTools: typeof BASE_JS_TOOLS;
-    private jsEvaluator: typeof evaluateJavaScriptCode;
-    protected logger: AgentLogger;
-
-    constructor() {
-        super();
-        this.baseJsTools = BASE_JS_TOOLS;
-        this.jsEvaluator = evaluateJavaScriptCode;
-        this.logger = AgentLogger.getInstance({ source: 'JavaScriptInterpreter', level: LOG_LEVEL });
-    }
-
-    async forward(code: string): Promise<string> {
-        this.logger.log(`Executing JavaScript code: ${code}`, { level: LogLevel.DEBUG });
-        
-        const state: { printOutputs: string[] } = { printOutputs: [] };
-        const [output] = await this.jsEvaluator(code, state, this.baseJsTools);
-        const result = `Stdout:\n${state.printOutputs.join('\n')}\nOutput: ${String(output)}`;
-        
-        this.logger.log(`JavaScript execution result: ${result}`, { level: LogLevel.DEBUG });
-        return result;
-    }
 }
 
 export class FinalAnswerTool extends Tool {
