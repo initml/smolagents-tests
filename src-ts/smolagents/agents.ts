@@ -165,6 +165,18 @@ export abstract class MultiStepAgent {
         }
 
         if (tool instanceof Tool) {
+            this.logger.log(`Executing tool: ${toolCall.name}`, toolCall.arguments, { level: LogLevel.DEBUG });
+
+            // Handle final answer
+            if (toolCall.name === 'finalAnswer') {
+                let finalAnswer = toolCall.arguments;
+                if (typeof finalAnswer === 'object' && 'answer' in finalAnswer) {
+                    finalAnswer = finalAnswer.answer;
+                }
+                this.logger.log('Final answer:', finalAnswer, { level: LogLevel.INFO });
+                return finalAnswer;
+            }
+
             const observation = await tool.call(toolCall.arguments);
             logEntry.observations = observation;
             logEntry.agentMemory?.push({
@@ -182,10 +194,12 @@ export abstract class MultiStepAgent {
     }
 
     public async run(task: string): Promise<any> {
-        this.logger.log(`Starting task: ${task}`, { level: LogLevel.INFO });
+        this.logger.log(`Running task: ${task}`, { level: LogLevel.DEBUG });
+
         const memory: ChatMessage[] = [
-            { role: MessageRole.SYSTEM, content: this.systemPrompt } 
+            { role: MessageRole.SYSTEM, content: this.systemPrompt }
         ];
+
         this.logger.log(`Memory: ${JSON.stringify(memory)}`, { level: LogLevel.DEBUG, id: "memory" }); 
         if (this.planningInterval) {
             this.logger.log('do planning', { level: LogLevel.DEBUG });
@@ -202,6 +216,8 @@ export abstract class MultiStepAgent {
         }
         this.logger.log(`Memory: ${JSON.stringify(memory)}`, { level: LogLevel.DEBUG, id: "memory" }); 
         let step = 0;
+        let finalAnswer: any = null;
+
         while (step < this.maxSteps) {
             const logEntry = new ActionStep({
                 agentMemory: memory,
@@ -213,8 +229,9 @@ export abstract class MultiStepAgent {
                 this.logger.log(`Step ${logEntry.step}: Processing...`, { level: LogLevel.DEBUG });
                 const result = await this.step(logEntry);
                 if (result !== null) {
-                    this.logger.log(`Task completed with result:`, result, { level: LogLevel.INFO });
-                    return result;
+                    finalAnswer = result;
+                    this.logger.log(`Task completed with result:`, finalAnswer, { level: LogLevel.INFO });
+                    break;
                 }
             } catch (error) {
                 if (error instanceof AgentError) {
@@ -224,6 +241,10 @@ export abstract class MultiStepAgent {
             }
 
             step++;
+        }
+
+        if (finalAnswer !== null) {
+            return finalAnswer;
         }
 
         throw new AgentMaxStepsError(`Maximum number of steps (${this.maxSteps}) reached without finding a solution.`);
@@ -339,6 +360,17 @@ export class ToolCallingAgent extends MultiStepAgent {
 
         if (tool instanceof Tool) {
             this.logger.log(`Executing tool: ${toolCall.name}`, toolCall.arguments, { level: LogLevel.DEBUG });
+
+            // Handle final answer
+            if (toolCall.name === 'finalAnswer') {
+                let finalAnswer = toolCall.arguments;
+                if (typeof finalAnswer === 'object' && 'answer' in finalAnswer) {
+                    finalAnswer = finalAnswer.answer;
+                }
+                this.logger.log('Final answer:', finalAnswer, { level: LogLevel.INFO });
+                return finalAnswer;
+            }
+
             const observation = await tool.call(toolCall.arguments);
             this.logger.log('Tool observation:', observation, { level: LogLevel.DEBUG });
             
