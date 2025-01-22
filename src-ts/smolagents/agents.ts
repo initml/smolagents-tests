@@ -42,6 +42,7 @@ import {
     truncateContent,
 } from './utils';
 import { FactsManager } from './facts';
+import { LogLevel, AgentLogger } from './logger';
 
 export interface ToolCall {
     name: string;
@@ -91,25 +92,6 @@ export class SystemPromptStep {
     constructor(public systemPrompt: string) {}
 }
 
-export enum LogLevel {
-    ERROR = 0,  // Only errors
-    INFO = 1,   // Normal output (default)
-    DEBUG = 2   // Detailed output
-}
-
-export class AgentLogger {
-    constructor(public level: LogLevel = LogLevel.INFO) {
-        console.log(
-            `Agent logger initialized with level ${LogLevel[this.level]}.`);
-    }
-
-    log(...args: any[]): void {
-        if (args[args.length - 1]?.level <= this.level) {
-            console.log(...args.slice(0, -1));
-        }
-    }
-}
-
 export abstract class MultiStepAgent {
     protected tools: Record<string, Tool>;
     protected model: (messages: ChatMessage[]) => Promise<string>;
@@ -148,7 +130,7 @@ export abstract class MultiStepAgent {
         this.toolDescriptionTemplate = toolDescriptionTemplate || DEFAULT_TOOL_DESCRIPTION_TEMPLATE;
         this.maxSteps = maxSteps;
         this.toolParser = toolParser;
-        this.logger = new AgentLogger(verbosityLevel as LogLevel);
+        this.logger = AgentLogger.getInstance(verbosityLevel as LogLevel);
         this.grammar = grammar;
         this.planningInterval = planningInterval;
         this.monitor = monitor;
