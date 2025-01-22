@@ -130,7 +130,7 @@ export abstract class MultiStepAgent {
         this.toolDescriptionTemplate = toolDescriptionTemplate || DEFAULT_TOOL_DESCRIPTION_TEMPLATE;
         this.maxSteps = maxSteps;
         this.toolParser = toolParser;
-        this.logger = AgentLogger.getInstance(verbosityLevel as LogLevel);
+        this.logger = AgentLogger.getInstance({ source: 'MultiStepAgent', level: verbosityLevel as LogLevel });
         this.grammar = grammar;
         this.planningInterval = planningInterval;
         this.monitor = monitor;

@@ -20,6 +20,7 @@ import { BASE_JS_TOOLS } from './local_js_executor';
 import { AuthorizedType } from './tools';
 import fetch from 'node-fetch';
 import * as readline from 'readline';
+import { LogLevel, AgentLogger } from './logger';
 
 interface PreTool {
     name: string;
@@ -52,9 +53,15 @@ export class JavaScriptInterpreterTool extends Tool {
     }
 
     async forward(code: string): Promise<string> {
+        const logger = AgentLogger.getInstance({ source: 'JavaScriptInterpreter' });
+        logger.log(`Executing JavaScript code: ${code}`, { level: LogLevel.DEBUG });
+        
         const state: { printOutputs: string[] } = { printOutputs: [] };
         const [output] = await this.jsEvaluator(code, state, this.baseJsTools);
-        return `Stdout:\n${state.printOutputs.join('\n')}\nOutput: ${String(output)}`;
+        const result = `Stdout:\n${state.printOutputs.join('\n')}\nOutput: ${String(output)}`;
+        
+        logger.log(`JavaScript execution result: ${result}`, { level: LogLevel.DEBUG });
+        return result;
     }
 }
 
@@ -71,7 +78,10 @@ export class FinalAnswerTool extends Tool {
     outputType = 'string' as const;
 
     async forward(answer: any): Promise<string> {
-        return typeof answer === 'string' ? answer : JSON.stringify(answer);
+        const logger = AgentLogger.getInstance({ source: 'FinalAnswer' });
+        const result = typeof answer === 'string' ? answer : JSON.stringify(answer);
+        logger.log(`Final answer provided: ${result}`, { level: LogLevel.INFO });
+        return result;
     }
 }
 
@@ -87,6 +97,9 @@ export class UserInputTool extends Tool {
     outputType = 'string' as const;
 
     async forward(question: string): Promise<string> {
+        const logger = AgentLogger.getInstance({ source: 'UserInput' });
+        logger.log(`Requesting user input: ${question}`, { level: LogLevel.INFO });
+        
         const rl = readline.createInterface({
             input: process.stdin,
             output: process.stdout,
@@ -95,6 +108,7 @@ export class UserInputTool extends Tool {
         return new Promise((resolve) => {
             rl.question(`${question} => `, (answer) => {
                 rl.close();
+                logger.log(`Received user input: ${answer}`, { level: LogLevel.DEBUG });
                 resolve(answer);
             });
         });
@@ -120,12 +134,17 @@ export class DuckDuckGoSearchTool extends Tool {
     }
 
     async forward(query: string): Promise<string> {
+        const logger = AgentLogger.getInstance({ source: 'DuckDuckGoSearch' });
+        logger.log(`Performing web search for query: ${query}`, { level: LogLevel.INFO });
+        
         try {
             const response = await fetch(
                 `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json`
             );
             if (!response.ok) {
-                throw new Error('Failed to fetch search results');
+                const error = `Failed to fetch search results: ${response.statusText}`;
+                logger.log(error, { level: LogLevel.ERROR });
+                throw new Error(error);
             }
 
             const data = await response.json();
@@ -134,9 +153,13 @@ export class DuckDuckGoSearchTool extends Tool {
                 (result: any) => `[${result.Text}](${result.FirstURL})`
             );
 
-            return '## Search Results\n\n' + postprocessedResults.join('\n\n');
+            const formattedResults = '## Search Results\n\n' + postprocessedResults.join('\n\n');
+            logger.log(`Found ${results.length} search results`, { level: LogLevel.DEBUG });
+            return formattedResults;
         } catch (error) {
-            throw new Error(`Search failed: ${error}`);
+            const errorMsg = `Search failed: ${error}`;
+            logger.log(errorMsg, { level: LogLevel.ERROR });
+            throw new Error(errorMsg);
         }
     }
 }
@@ -153,21 +176,32 @@ export class VisitWebpageTool extends Tool {
     outputType = 'string' as const;
 
     async forward(url: string): Promise<string> {
+        const logger = AgentLogger.getInstance({ source: 'VisitWebpage' });
+        logger.log(`Visiting webpage: ${url}`, { level: LogLevel.INFO });
+        
         try {
             const response = await fetch(url);
             if (!response.ok) {
-                throw new Error(`Failed to fetch webpage: ${response.statusText}`);
+                const error = `Failed to fetch webpage: ${response.statusText}`;
+                logger.log(error, { level: LogLevel.ERROR });
+                throw new Error(error);
             }
             const html = await response.text();
+            logger.log(`Successfully fetched webpage content (${html.length} bytes)`, { level: LogLevel.DEBUG });
             
             // Basic HTML to Markdown conversion
             // In a real implementation, you'd want to use a proper HTML to Markdown converter
-            return html
+            const markdown = html
                 .replace(/<[^>]*>/g, '') // Remove HTML tags
                 .replace(/\s+/g, ' ') // Normalize whitespace
                 .trim();
+            
+            logger.log(`Converted HTML to markdown (${markdown.length} characters)`, { level: LogLevel.DEBUG });
+            return markdown;
         } catch (error) {
-            throw new Error(`Failed to visit webpage: ${error}`);
+            const errorMsg = `Failed to visit webpage: ${error}`;
+            logger.log(errorMsg, { level: LogLevel.ERROR });
+            throw new Error(errorMsg);
         }
     }
 }
