@@ -28,7 +28,31 @@ export class WeatherTool extends Tool {
     }
 }
 
-const weatherTool = new WeatherTool();
+export class Multipy extends Tool {
+    public override name = 'multiplicator';
+    public override description = 'make the product of two numbers';
+    public override inputs = {
+        a: {
+            type: 'number' as AuthorizedType,
+            description: 'The first number to multiply'
+       },
+        b: {
+            type: 'number' as AuthorizedType,
+            description: 'The second number to multiply'
+        }
+    };
+    public override outputType: AuthorizedType = 'number';
+
+    constructor() {
+        super();
+    }
+
+    protected override async forward(args: Record<string, any>): Promise<number> {
+        const { a, b } = args;
+        return a * b;
+    }
+}
+
 
 const model = new OpenAIServerModel(
     'gpt-4',
@@ -37,12 +61,12 @@ const model = new OpenAIServerModel(
 );
 
 const agent = new ToolCallingAgent(
-    [weatherTool], // tools
+    [new WeatherTool(), new Multipy()], // tools
     model.toModelFunction(), // model
 );
 
 async function main() {
-    console.log(await agent.run("What's the weather like in Paris?"));
+    console.log(await agent.run("What's the temperature in Paris, multiply by 2?"));
 }
 
 if (require.main === module) {
