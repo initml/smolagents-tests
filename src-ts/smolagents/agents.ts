@@ -1,13 +1,9 @@
 import { Tool } from './tools';
-import { FinalAnswerTool, TOOL_MAPPING } from './default_tools';
+import { TOOL_MAPPING } from './default_tools';
 import { MessageRole, ChatMessage } from './models';
-import { getManagedAgentPrompt,
-    getPlanUpdateFinalPlanRedaction,
-    getSystemPromptPlan,
-    getSystemPromptPlanUpdate,
+import { getSystemPromptPlan,
     getToolCallingSystemPrompt,
-    getUserPromptPlan,
-    getUserPromptPlanUpdate } from './prompts';
+    getUserPromptPlan } from './prompts';
 import { 
     DEFAULT_TOOL_DESCRIPTION_TEMPLATE,
     getToolDescriptionWithArgs
@@ -15,12 +11,9 @@ import {
 import {
     AgentError,
     AgentExecutionError,
-    AgentGenerationError,
     AgentMaxStepsError,
     AgentParsingError,
-    parseCodeBlobs,
-    parseJsonToolCall,
-    truncateContent,
+    parseJsonToolCall
 } from './utils';
 import { FactsManager } from './facts';
 import { LogLevel, AgentLogger } from './logger';
@@ -33,20 +26,7 @@ export interface ToolCall {
     id?: string;
 }
 
-export interface AgentStepLog {
-    agentMemory?: ChatMessage[];
-    toolCalls?: ToolCall[];
-    startTime?: number;
-    endTime?: number;
-    step?: number;
-    error?: AgentError;
-    duration?: number;
-    llmOutput?: string;
-    observations?: string;
-    actionOutput?: any;
-}
-
-export class ActionStep implements AgentStepLog {
+export class ActionStep {
     agentMemory?: ChatMessage[];
     toolCalls?: ToolCall[];
     startTime?: number;
@@ -89,6 +69,7 @@ export class ToolCallingAgent {
     protected lastPlan?: string;
     protected lastFacts?: string;
     protected factsManager: FactsManager;
+    protected logs: (ActionStep | PlanningStep | TaskStep | SystemPromptStep)[] = [];
 
     constructor(
         tools: Tool[],
@@ -192,20 +173,7 @@ export class ToolCallingAgent {
             { role: MessageRole.SYSTEM, content: this.systemPrompt }
         ];
 
-        this.logger.log(`Memory: ${JSON.stringify(memory)}`, { level: LogLevel.DEBUG, id: "memory" }); 
-        if (this.planningInterval) {
-            this.logger.log('do planning', { level: LogLevel.DEBUG });
-            const planningStep = await this.plan(task);
-            memory.push(
-                { role: MessageRole.USER, content: task },
-                { role: MessageRole.ASSISTANT, content: planningStep.plan }
-            );
-            this.lastPlan = planningStep.plan;
-            this.lastFacts = planningStep.facts;
-        } else {
-            this.logger.log('no planning', { level: LogLevel.DEBUG });
-            memory.push({ role: MessageRole.USER, content: task });
-        }
+        memory.push({ role: MessageRole.USER, content: task });
         this.logger.log(`Memory: ${JSON.stringify(memory)}`, { level: LogLevel.DEBUG, id: "memory" }); 
         let step = 0;
         let finalAnswer: any = null;
@@ -218,6 +186,17 @@ export class ToolCallingAgent {
             });
 
             try {
+                // Check if planning is needed at this step
+                if (this.planningInterval && step % this.planningInterval === 0) {
+                    this.logger.log('do planning', { level: LogLevel.DEBUG });
+                    const planningStep = await this.plan(task, step === 0);
+                    memory.push(
+                        { role: MessageRole.ASSISTANT, content: planningStep.plan }
+                    );
+                    this.lastPlan = planningStep.plan;
+                    this.lastFacts = planningStep.facts;
+                }
+
                 this.logger.log(`Step ${logEntry.step}: Processing...`, { level: LogLevel.DEBUG });
                 const result = await this.step(logEntry);
                 if (result !== null) {
@@ -242,12 +221,40 @@ export class ToolCallingAgent {
         throw new AgentMaxStepsError(`Maximum number of steps (${this.maxSteps}) reached without finding a solution.`);
     }
 
-    protected async plan(task: string): Promise<PlanningStep> {
+    protected async writeInnerMemoryFromLogs(): Promise<ChatMessage[]> {
+        this.logger.log('Writing inner memory from logs...', { level: LogLevel.DEBUG });
+        const memory: ChatMessage[] = [
+            { role: MessageRole.SYSTEM, content: this.systemPrompt }
+        ];
+
+        for (const log of this.logs) {
+            this.logger.log(`Processing log entry type: ${log.constructor.name}`, { level: LogLevel.DEBUG });
+            
+            if (log instanceof ActionStep) {
+                if (log.agentMemory) {
+                    this.logger.log(`Adding ${log.agentMemory.length} messages from ActionStep`, { level: LogLevel.DEBUG });
+                    memory.push(...log.agentMemory);
+                }
+            }
+        }
+
+        this.logger.log(`Final memory size: ${memory.length} messages`, { level: LogLevel.DEBUG });
+        return memory;
+    }
+
+    protected async plan(task: string, isFirstStep: boolean = false): Promise<PlanningStep> {
+        this.logger.log(`Starting planning step. isFirstStep: ${isFirstStep}`, { level: LogLevel.DEBUG });
+        
         const agentMemory = await this.writeInnerMemoryFromLogs();
+        this.logger.log(`Agent memory size: ${agentMemory.length}`, { level: LogLevel.DEBUG });
 
         // Get updated facts from the FactsManager
+        this.logger.log('Getting facts update messages...', { level: LogLevel.DEBUG });
         const factsUpdateMessages = this.factsManager.getFactsUpdateMessages(agentMemory);
+        this.logger.log(`Facts update messages size: ${factsUpdateMessages.length}`, { level: LogLevel.DEBUG });
+        
         const factsUpdateOutput = await this.model(factsUpdateMessages);
+        this.logger.log('Updating facts with model output...', { level: LogLevel.DEBUG });
         this.factsManager.updateFacts(factsUpdateOutput);
 
         // Create plan using the updated facts
@@ -268,26 +275,11 @@ export class ToolCallingAgent {
             },
         ];
 
+        this.logger.log(`Plan memory size: ${planMemory.length}`, { level: LogLevel.DEBUG });
         const planOutput = await this.model(planMemory);
+        this.logger.log('Received plan output from model', { level: LogLevel.DEBUG });
+
         return new PlanningStep(planOutput, this.factsManager.formatFacts());
-    }
-
-    protected async writeInnerMemoryFromLogs(): Promise<ChatMessage[]> {
-        // Initialize memory with system prompt
-        const memory: ChatMessage[] = [
-            { role: MessageRole.SYSTEM, content: this.systemPrompt }
-        ];
-
-        // Add any facts from the facts manager
-        const facts = this.factsManager.formatFacts();
-        if (facts) {
-            memory.push({
-                role: MessageRole.USER,
-                content: `Here are some facts I know:\n${facts}`
-            });
-        }
-
-        return memory;
     }
 }
 

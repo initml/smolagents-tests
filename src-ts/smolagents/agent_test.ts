@@ -67,13 +67,15 @@ const model = new OpenAIServerModel(
     {}
 );
 
-const agent = new ToolCallingAgent(
-    tools, 
-    model.toModelFunction(), 
-);
-
 async function main() {
-    console.log(await agent.run("What's the temperature in Paris, multiply by 2?"));
+    const agent = new ToolCallingAgent(
+        tools,
+        model.toModelFunction(), 
+        undefined,  
+        4  
+    );
+
+    console.log(await agent.run("What it the best city in the world? Can you tell me the temperature there and multiply it by 2?"));
 }
 
 if (require.main === module) {
