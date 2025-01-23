@@ -2,7 +2,7 @@ import { Tool } from './tools';
 import OpenAI from 'openai';
 import { LogLevel, AgentLogger } from './logger';
 
-const LOG_LEVEL = LogLevel.DEBUG;  // Set default log level for this file
+const LOG_LEVEL = LogLevel.INFO;  // Set default log level for this file
 
 export enum MessageRole {
     USER = 'user',

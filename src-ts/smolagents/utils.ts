@@ -1,6 +1,6 @@
 import { LogLevel, AgentLogger } from './logger';
 
-const LOG_LEVEL = LogLevel.DEBUG;  // Set default log level for this file
+const LOG_LEVEL = LogLevel.ERROR;  // Set default log level for this file
 
 // Base built-in modules that are allowed
 export const BASE_BUILTIN_MODULES = [
