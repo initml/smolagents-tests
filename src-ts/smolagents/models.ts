@@ -153,8 +153,10 @@ export class OpenAIServerModel extends Model {
                         }
                     }))
                 });
-                this.logger.log('Successfully received response with tools', { level: LogLevel.DEBUG });
-                return response.choices[0].message as ChatMessage;
+                this.logger.log('Successfully received response with tools', { level: LogLevel.INFO });
+                const modelResponse = response.choices[0].message as ChatMessage;
+                this.logger.log('Successfully received response with tools', modelResponse, { level: LogLevel.DEBUG });
+                return modelResponse;
             } else {
                 this.logger.log('Making API call without tools', { level: LogLevel.DEBUG });
                 const response = await this.client.chat.completions.create(baseParams);
@@ -208,7 +210,8 @@ function getJsonSchema(tool: Tool): Record<string, any> {
             .map(([name, _]) => name)
     };
     
-    logger.log(`Generated schema with ${Object.keys(schema.properties).length} properties`, { level: LogLevel.DEBUG });
+    logger.log(`Generated schema with ${Object.keys(schema.properties).length} properties`, { level: LogLevel.INFO });
+    logger.log(`Generated schema with ${Object.keys(schema.properties)}`, { level: LogLevel.DEBUG });
     return schema;
 }
 
