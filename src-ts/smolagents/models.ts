@@ -154,9 +154,24 @@ export class OpenAIServerModel extends Model {
                     }))
                 });
                 this.logger.log('Successfully received response with tools', { level: LogLevel.INFO });
-                const modelResponse = response.choices[0].message as ChatMessage;
-                this.logger.log('Successfully received response with tools', modelResponse, { level: LogLevel.DEBUG });
-                return modelResponse;
+                const message = response.choices[0].message;
+                
+                // Extract tool call information and format it as expected
+                if (message.tool_calls && message.tool_calls.length > 0) {
+                    const toolCall = message.tool_calls[0];
+                    const content = JSON.stringify({
+                        name: toolCall.function.name,
+                        arguments: JSON.parse(toolCall.function.arguments || '{}')
+                    });
+                    const modelResponse: ChatMessage = {
+                        role: MessageRole.ASSISTANT,
+                        content: content
+                    };
+                    this.logger.log('Successfully formatted tool call response', modelResponse, { level: LogLevel.DEBUG });
+                    return modelResponse;
+                }
+                
+                return message as ChatMessage;
             } else {
                 this.logger.log('Making API call without tools', { level: LogLevel.DEBUG });
                 const response = await this.client.chat.completions.create(baseParams);

@@ -136,42 +136,57 @@ Code:
 /**
  * Parse a JSON tool call and extract the tool name and arguments
  */
-export function parseJsonToolCall(jsonBlob: string): [string, any | null] {
+export function parseJsonToolCall(input: any): [string, any | null] {
     const logger = AgentLogger.getInstance({ source: 'parseJsonToolCall', level: LOG_LEVEL });
-    logger.log(`Parsing tool call from: ${jsonBlob}`, { level: LOG_LEVEL });
+    logger.log(`Parsing tool call from:`, input, { level: LOG_LEVEL });
     
-    const cleanedJson = jsonBlob.replace(/```json/g, '').replace(/```/g, '');
-    const toolCall = parseJsonBlob(cleanedJson);
-    
-    const toolNameKeys = ['action', 'tool_name', 'tool', 'name', 'function'];
-    const toolArgsKeys = ['action_input', 'tool_arguments', 'tool_args', 'parameters'];
-    
-    let toolName: string | null = null;
-    let toolArgs: any | null = null;
-    
-    for (const key of toolNameKeys) {
-        if (key in toolCall) {
-            toolName = toolCall[key];
-            logger.log(`Found tool name under key '${key}': ${toolName}`, { level: LOG_LEVEL });
-            break;
+    // Handle OpenAI function call format
+    if (typeof input === 'object' && input.tool_calls && Array.isArray(input.tool_calls)) {
+        const toolCall = input.tool_calls[0];
+        if (toolCall && toolCall.function) {
+            return [toolCall.function.name, toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : null];
         }
     }
-    
-    for (const key of toolArgsKeys) {
-        if (key in toolCall) {
-            toolArgs = toolCall[key];
-            logger.log(`Found tool args under key '${key}': ${JSON.stringify(toolArgs)}`, { level: LOG_LEVEL });
-            break;
+
+    // Handle string input (old format)
+    if (typeof input === 'string') {
+        const cleanedJson = input.replace(/```json/g, '').replace(/```/g, '');
+        const toolCall = parseJsonBlob(cleanedJson);
+        
+        const toolNameKeys = ['action', 'tool_name', 'tool', 'name', 'function'];
+        const toolArgsKeys = ['arguments', 'action_input', 'tool_arguments', 'tool_args', 'parameters'];
+        
+        let toolName: string | null = null;
+        let toolArgs: any | null = null;
+        
+        for (const key of toolNameKeys) {
+            if (key in toolCall) {
+                toolName = toolCall[key];
+                logger.log(`Found tool name under key '${key}': ${toolName}`, { level: LOG_LEVEL });
+                break;
+            }
         }
+        
+        for (const key of toolArgsKeys) {
+            if (key in toolCall) {
+                toolArgs = toolCall[key];
+                logger.log(`Found tool args under key '${key}': ${JSON.stringify(toolArgs)}`, { level: LOG_LEVEL });
+                break;
+            }
+        }
+        
+        if (!toolName) {
+            throw new AgentParsingError(
+                `No tool name key found in tool call! Tool call: ${input}`
+            );
+        }
+        
+        return [toolName, toolArgs];
     }
-    
-    if (!toolName) {
-        throw new AgentParsingError(
-            `No tool name key found in tool call! Tool call: ${jsonBlob}`
-        );
-    }
-    
-    return [toolName, toolArgs];
+
+    throw new AgentParsingError(
+        `Invalid input format for tool call: ${JSON.stringify(input)}`
+    );
 }
 
 export const MAX_LENGTH_TRUNCATE_CONTENT = 20000;
