@@ -1,18 +1,6 @@
-/**
- * Copyright 2024 The HuggingFace Inc. team. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+import { LogLevel, AgentLogger } from './logger';
+
+const LOG_LEVEL = LogLevel.DEBUG;  // Set default log level for this file
 
 // Base built-in modules that are allowed
 export const BASE_BUILTIN_MODULES = [
@@ -82,12 +70,14 @@ export class AgentGenerationError extends AgentError {
  * Parse a JSON blob string into an object
  */
 export function parseJsonBlob(jsonBlob: string): Record<string, any> {
+    const logger = AgentLogger.getInstance({ source: 'parseJsonBlob', level: LOG_LEVEL });
     try {
         const firstAccoladeIndex = jsonBlob.indexOf('{');
         const lastAccoladeIndex = jsonBlob.lastIndexOf('}');
         const cleanedJson = jsonBlob
             .slice(firstAccoladeIndex, lastAccoladeIndex + 1)
             .replace(/\\"/g, "'");
+        logger.log(`Parsing JSON blob: ${cleanedJson}`, { level: LOG_LEVEL });
         return JSON.parse(cleanedJson);
     } catch (e) {
         if (e instanceof SyntaxError) {
@@ -147,6 +137,9 @@ Code:
  * Parse a JSON tool call and extract the tool name and arguments
  */
 export function parseJsonToolCall(jsonBlob: string): [string, any | null] {
+    const logger = AgentLogger.getInstance({ source: 'parseJsonToolCall', level: LOG_LEVEL });
+    logger.log(`Parsing tool call from: ${jsonBlob}`, { level: LOG_LEVEL });
+    
     const cleanedJson = jsonBlob.replace(/```json/g, '').replace(/```/g, '');
     const toolCall = parseJsonBlob(cleanedJson);
     
@@ -159,6 +152,7 @@ export function parseJsonToolCall(jsonBlob: string): [string, any | null] {
     for (const key of toolNameKeys) {
         if (key in toolCall) {
             toolName = toolCall[key];
+            logger.log(`Found tool name under key '${key}': ${toolName}`, { level: LOG_LEVEL });
             break;
         }
     }
@@ -166,6 +160,7 @@ export function parseJsonToolCall(jsonBlob: string): [string, any | null] {
     for (const key of toolArgsKeys) {
         if (key in toolCall) {
             toolArgs = toolCall[key];
+            logger.log(`Found tool args under key '${key}': ${JSON.stringify(toolArgs)}`, { level: LOG_LEVEL });
             break;
         }
     }
