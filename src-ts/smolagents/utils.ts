@@ -97,43 +97,6 @@ export function parseJsonBlob(jsonBlob: string): Record<string, any> {
 }
 
 /**
- * Parse code blobs from markdown-style code blocks or direct code
- */
-export function parseCodeBlobs(codeBlob: string): string {
-    const pattern = /```(?:ts|typescript)?\n(.*?)\n```/s;
-    const matches = codeBlob.match(pattern);
-    
-    if (!matches) {
-        try {
-            // Maybe it's direct code - we can't use AST parsing in TS directly
-            // but we can check if it's valid TS code by trying to evaluate it
-            new Function(codeBlob);
-            return codeBlob;
-        } catch (e) {
-            if (codeBlob.includes('final') && codeBlob.includes('answer')) {
-                throw new Error(
-                    `The code blob is invalid. It seems like you're trying to return the final answer, you can do it as follows:
-Code:
-\`\`\`typescript
-finalAnswer("YOUR FINAL ANSWER HERE");
-\`\`\`<end_code>`
-                );
-            }
-            throw new Error(
-                `The code blob is invalid. Make sure to include code with the correct pattern, for instance:
-Thoughts: Your thoughts
-Code:
-\`\`\`typescript
-// Your TypeScript code here
-\`\`\`<end_code>`
-            );
-        }
-    }
-    
-    return matches.slice(1).join('\n\n').trim();
-}
-
-/**
  * Parse a JSON tool call and extract the tool name and arguments
  */
 export function parseJsonToolCall(input: any): [string, any | null] {
