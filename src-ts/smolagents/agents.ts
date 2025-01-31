@@ -248,15 +248,16 @@ export class ToolCallingAgent {
         const agentMemory = await this.writeInnerMemoryFromLogs();
         this.logger.log(`Agent memory size: ${agentMemory.length}`, { level: LogLevel.DEBUG });
 
-        // Get updated facts from the FactsManager
-        this.logger.log('Getting facts update messages...', { level: LogLevel.DEBUG });
-        const factsUpdateMessages = this.factsManager.getFactsUpdateMessages(agentMemory);
-        this.logger.log(`Facts update messages size: ${factsUpdateMessages.length}`, { level: LogLevel.DEBUG });
-        
-        const factsUpdateOutput = await this.model(factsUpdateMessages);
-        this.logger.log('Updating facts with model output...', { level: LogLevel.DEBUG });
-        this.factsManager.updateFacts(factsUpdateOutput);
-
+        if (!isFirstStep) {
+            // Get updated facts from the FactsManager
+            this.logger.log('Getting facts update messages...', { level: LogLevel.DEBUG });
+            const factsUpdateMessages = this.factsManager.getFactsUpdateMessages(agentMemory);
+            this.logger.log(`Facts update messages size: ${factsUpdateMessages.length}`, { level: LogLevel.DEBUG });
+            
+            const factsUpdateOutput = await this.model(factsUpdateMessages);
+            this.logger.log('Updating facts with model output...', { level: LogLevel.DEBUG });
+            this.factsManager.updateFacts(factsUpdateOutput);
+        }
         // Create plan using the updated facts
         const planMemory: ChatMessage[] = [
             {

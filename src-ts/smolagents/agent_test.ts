@@ -75,7 +75,7 @@ async function main() {
         4  
     );
 
-    console.log(await agent.run("Find the name of the French Capital. Then findthe temperature there and multiply it by 2. Mutiply the result by 10."));
+    console.log(await agent.run("Find the name of the French Capital. Then find the temperature in this place and multiply it by 2. Mutiply the result by 10."));
 }
 
 if (require.main === module) {

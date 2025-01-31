@@ -2,7 +2,7 @@ import { Tool } from './tools';
 import OpenAI from 'openai';
 import { LogLevel, AgentLogger } from './logger';
 
-const LOG_LEVEL = LogLevel.INFO;  // Set default log level for this file
+const LOG_LEVEL = LogLevel.DEBUG;  // Set default log level for this file
 
 export enum MessageRole {
     USER = 'user',
@@ -189,7 +189,9 @@ export class OpenAIServerModel extends Model {
         this.logger.log('Converting OpenAIServerModel to model function', { level: LogLevel.DEBUG });
         return async (messages: ChatMessage[]): Promise<string> => {
             try {
+                this.logger.log('Chat Message Sent', messages, { level: LogLevel.DEBUG, id: 'chat_messages_call' });
                 const response = await this.call(messages);
+                this.logger.log('Chat Message Received', response, { level: LogLevel.DEBUG, id: 'chat_messages_answer' });
                 return response.content || '';
             } catch (error) {
                 const errorMsg = `Model function call failed: ${error}`;
